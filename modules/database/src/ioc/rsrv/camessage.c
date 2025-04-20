@@ -791,10 +791,9 @@ static int write_action ( caHdrLargeArray *mp,
         return RSRV_ERROR;
     }
 
-    asWritePvt = asTrapWriteWithData ( pciu->asClientPVT,
-        pciu->client->pUserName ? pciu->client->pUserName : "",
-        pciu->client->pHostName ? pciu->client->pHostName : "",
-        pciu->dbch, mp->m_dataType, mp->m_count, pPayload );
+    char * user = pciu->client->pUserName ? pciu->client->pUserName : "";
+    char * host = pciu->client->pHostName ? pciu->client->pHostName : "";
+    asWritePvt = asTrapWriteWithData ( pciu->asClientPVT, user, host, pciu->dbch, mp->m_dataType, mp->m_count, pPayload );
 
     dbStatus = dbChannel_put(
                   pciu->dbch,
@@ -1768,12 +1767,9 @@ static int write_notify_action ( caHdrLargeArray *mp, void *pPayload,
 
     pciu->pPutNotify->dbrType = mp->m_dataType;
 
-    pciu->pPutNotify->asWritePvt = asTrapWriteWithData (
-        pciu->asClientPVT,
-        pciu->client->pUserName ? pciu->client->pUserName : "",
-        pciu->client->pHostName ? pciu->client->pHostName : "",
-        pciu->dbch, mp->m_dataType, mp->m_count,
-        pciu->pPutNotify->pbuffer );
+    char * user = client->pUserName ? client->pUserName : "";
+    char * host = client->pHostName ? client->pHostName : "";
+    pciu->pPutNotify->asWritePvt = asTrapWriteWithData ( pciu->asClientPVT, user, host, pciu->dbch, mp->m_dataType, mp->m_count, pciu->pPutNotify->pbuffer );
 
     dbProcessNotify(&pciu->pPutNotify->dbPutNotify);
 

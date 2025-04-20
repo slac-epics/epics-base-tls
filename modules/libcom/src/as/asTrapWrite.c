@@ -58,7 +58,7 @@ typedef struct asTrapWritePvt
 }asTrapWritePvt;
 
 static asTrapWritePvt *pasTrapWritePvt = 0;
-
+
 static void asTrapWriteInit(void)
 {
     pasTrapWritePvt = callocMustSucceed(1,sizeof(asTrapWritePvt),"asTrapWriteInit");
@@ -110,9 +110,16 @@ void epicsStdCall asTrapWriteUnregisterListener(asTrapWriteId id)
     free(plistener);
     epicsMutexUnlock(pasTrapWritePvt->lock);
 }
-
+
 void * epicsStdCall asTrapWriteBeforeWithData(
     const char *userid, const char *hostid, dbChannel *chan,
+    int dbrType, int no_elements, void *data)
+{
+    return asTrapWriteBeforeWithIdentityData((ASIDENTITY){ .user = userid, .host = (char *)hostid, .method = "ca"  }, chan, dbrType, no_elements, data);
+}
+
+void * epicsStdCall asTrapWriteBeforeWithIdentityData(
+    ASIDENTITY identity, dbChannel *chan,
     int dbrType, int no_elements, void *data)
 {
     writeMessage *pwriteMessage;
@@ -124,8 +131,11 @@ void * epicsStdCall asTrapWriteBeforeWithData(
 
     pwriteMessage = (writeMessage *)freeListCalloc(
         pasTrapWritePvt->freeListWriteMessage);
-    pwriteMessage->message.userid = userid;
-    pwriteMessage->message.hostid = hostid;
+    pwriteMessage->message.userid = identity.user;
+    pwriteMessage->message.hostid = identity.host;
+    pwriteMessage->message.method = identity.method;
+    pwriteMessage->message.authority = identity.authority;
+    pwriteMessage->message.protocol = identity.protocol;
     pwriteMessage->message.serverSpecific = chan;
     pwriteMessage->message.dbrType = dbrType;
     pwriteMessage->message.no_elements = no_elements;
