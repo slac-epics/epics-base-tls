@@ -162,6 +162,21 @@ void * epicsStdCall asTrapWriteBeforeWithIdentityData(
     return pwriteMessage;
 }
 
+void * epicsStdCall asTrapWriteWithDataCompat(
+    ASCLIENTPVT asClientPvt, const char *user, const char *host, dbChannel *addr,
+    int dbrType, int no_elements, void *data)
+{
+    return asTrapWriteBeforeWithIdentityData(
+        (ASIDENTITY){
+            .user = user,
+            .host = (char *)host,
+            .method = asClientPvt->identity.method,
+            .authority = asClientPvt->identity.authority,
+            .protocol = asClientPvt->identity.protocol
+        },
+        addr, dbrType, no_elements, data);
+}
+
 void epicsStdCall asTrapWriteAfterWrite(void *pvt)
 {
     writeMessage *pwriteMessage = (writeMessage *)pvt;
