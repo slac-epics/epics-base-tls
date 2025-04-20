@@ -58,9 +58,16 @@ void *asTrapWriteWithData(ASCLIENTPVT asClientPvt,
      int dbrType, int no_elements, void *data);
 void asTrapWriteAfter(ASCLIENTPVT asClientPvt);
 */
+
+/* Adapter function for backward compatibility */
+LIBCOM_API void * epicsStdCall asTrapWriteWithDataCompat(
+    ASCLIENTPVT asClientPvt,
+    const char *user, const char *host, struct dbChannel *addr,
+    int dbrType, int no_elements, void *data);
+
 #define asTrapWriteWithData(asClientPvt, user, host, addr, type, count, data) \
     ((asActive && (asClientPvt)->trapMask) \
-    ? asTrapWriteBeforeWithIdentityData(((ASIDENTITY){ .user = user, .host = host, .method = (asClientPvt)->identity.method, .authority = (asClientPvt)->identity.authority, .protocol = (asClientPvt)->identity.protocol }), (addr), (type), (count), (data)) \
+    ? asTrapWriteWithDataCompat((asClientPvt), (user), (host), (addr), (type), (count), (data)) \
     : 0)
 #define asTrapWriteAfter(pvt) \
     if (pvt) asTrapWriteAfterWrite(pvt)
