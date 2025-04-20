@@ -1,0 +1,60 @@
+name: docker multi-platform epics-base build
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_TOKEN:
+        required: true
+  push:
+    branches:
+      - '7.0-secure-pvaccess'
+
+jobs:
+  build-epics-base:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Checkout PVXS repo for Dockerfile
+        uses: actions/checkout@v4
+        with:
+          repository: george-mcintyre/pvxs
+          ref: tls
+          path: pvxs
+          submodules: recursive
+
+      - name: Checkout EPICS base code
+        uses: actions/checkout@v4
+        with:
+          repository: george-mcintyre/epics-base
+          ref: 7.0-secure-pvaccess
+          path: epics-base
+          submodules: recursive
+
+      - name: Debug directory content
+        run: |
+          echo "Contents of epics-base:"
+          ls -la epics-base/
+          echo "Looking for Makefile:"
+          find epics-base/ -name Makefile
+
+      - name: Build and push epics-base
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: pvxs/example/docker/epics-base/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            DOCKER_USERNAME=${{ vars.DOCKER_USERNAME }}
+          tags: ${{ vars.DOCKER_USERNAME }}/epics-base:latest
