@@ -22,7 +22,7 @@ static ASGRULE *yyAsgRule=NULL;
 
 %start asconfig
 
-%token <Str> tokenUAG tokenHAG tokenASG tokenRULE tokenCALC tokenINP tokenSTRING
+%token <Str> tokenUAG tokenHAG tokenASG tokenRULE tokenCALC tokenINP tokenMETHOD tokenAUTHORITY tokenPROTOCOL tokenSTRING
 %token <Int64> tokenINT64
 %token <Float64> tokenFLOAT64
 
@@ -63,6 +63,9 @@ keyword: tokenUAG
 non_rule_keyword: tokenASG
     | tokenRULE
     | tokenINP
+    | tokenMETHOD
+    | tokenAUTHORITY
+    | tokenPROTOCOL
     ;
 
 generic_item: tokenSTRING generic_head generic_list_block
@@ -256,6 +259,8 @@ rule_head_mandatory:    tokenINT64 ',' tokenSTRING
             yyAsgRule = asAsgAddRule(yyAsg,asREAD,(int)$1);
         } else if((strcmp($3,"WRITE")==0)) {
             yyAsgRule = asAsgAddRule(yyAsg,asWRITE,(int)$1);
+        } else if((strcmp($3,"RPC")==0)) {
+            yyAsgRule = asAsgAddRule(yyAsg,asRPC,(int)$1);
         } else {
             yywarn("Ignoring RULE with unsupported PERMISSION", $3);
         }
@@ -285,6 +290,23 @@ rule_list:  rule_list rule_list_item
 
 rule_list_item: tokenUAG '(' rule_uag_list ')'
     |   tokenHAG  '(' rule_hag_list ')'
+    |   tokenMETHOD '(' rule_method_list ')'
+    |   tokenAUTHORITY '(' rule_authority_list ')'
+    |   tokenPROTOCOL '(' tokenSTRING ')'
+    {
+        if((strcasecmp($3,"TLS")==0)) {
+            if (asAsgAddProtocolAdd(yyAsgRule,AS_PROTOCOL_TLS))
+                yyerror("");
+        } else if((strcasecmp($3,"TCP")==0)) {
+            if (asAsgAddProtocolAdd(yyAsgRule,AS_PROTOCOL_TCP))
+                yyerror("");
+        } else {
+            yywarn("Ignoring RULE containing unsupported PROTOCOL", $3);
+            if (asAsgRuleDisable(yyAsgRule))
+                yyerror("");
+        }
+        free((void *)$3);
+    }
     |   tokenCALC '(' tokenSTRING ')'
     {
         if (asAsgRuleCalc(yyAsgRule,$3))
@@ -323,6 +345,31 @@ rule_hag_list_name: tokenSTRING
         free((void *)$1);
     }
     ;
+
+rule_method_list: rule_method_list ',' rule_method_list_name
+    |   rule_method_list_name
+    ;
+
+rule_method_list_name: tokenSTRING
+    {
+        if (asAsgRuleMethodAdd(yyAsgRule, $1))
+            yyerror("");
+        free((void *)$1);
+    }
+    ;
+
+rule_authority_list: rule_authority_list ',' rule_authority_list_name
+    |   rule_authority_list_name
+    ;
+
+rule_authority_list_name: tokenSTRING
+    {
+        if (asAsgRuleAuthorityAdd(yyAsgRule, $1))
+            yyerror("");
+        free((void *)$1);
+    }
+    ;
+
 %%
 
 #include "asLib_lex.c"
