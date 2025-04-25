@@ -66,6 +66,9 @@ keyword: tokenUAG
 non_rule_keyword: tokenASG
     | tokenRULE
     | tokenINP
+    | tokenMETHOD
+    | tokenAUTHORITY
+    | tokenPROTOCOL
     ;
 
 generic_item: tokenSTRING generic_head generic_list_block
