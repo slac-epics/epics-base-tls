@@ -1184,7 +1184,7 @@ static void testRulesDumpOutput(void)
 
 MAIN(aslibtest)
 {
-    testPlan(102);
+    testPlan(103);
     testSyntaxErrors();
     testHostNames();
     testDumpOutput();

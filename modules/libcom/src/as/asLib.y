@@ -57,15 +57,15 @@ asconfig_item:  tokenUAG uag_head uag_body
 keyword: tokenUAG
     | tokenHAG
     | tokenCALC
+    | tokenMETHOD
+    | tokenAUTHORITY
+    | tokenPROTOCOL
     | non_rule_keyword
     ;
 
 non_rule_keyword: tokenASG
     | tokenRULE
     | tokenINP
-    | tokenMETHOD
-    | tokenAUTHORITY
-    | tokenPROTOCOL
     ;
 
 generic_item: tokenSTRING generic_head generic_list_block
