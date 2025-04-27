@@ -917,7 +917,7 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
                 case AS_PROTOCOL_TLS:
                     fprintf(fp,"\t\tPROTOCOL(\"tls\")\n");
                     break;
-                default:
+                default: ;
             }
         next_rule:
             if(print_rule_end_brace) fprintf(fp,"\t}\n");
