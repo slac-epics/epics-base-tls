@@ -303,6 +303,11 @@ LIBCOM_API long epicsStdCall asComputeAsg(ASG *pasg);
 LIBCOM_API void * epicsStdCall asCalloc(size_t nobj,size_t size);
 LIBCOM_API char * epicsStdCall asStrdup(unsigned char *str);
 LIBCOM_API void asFreeAll(ASBASE *pasbase);
+
+// The maximum length of the Authority string that can be processed
+// by the EPICS Authorization system.  Set as large as you like to handle the longest string you think will be provided.
+// Holds the concatenated common names of the chain of authority all the way back to the root certificate.
+#define MAX_AUTH_CHAIN_STRING 1024
 #ifdef __cplusplus
 }
 #endif

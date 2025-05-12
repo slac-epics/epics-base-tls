@@ -1201,6 +1201,19 @@ check_authority:
         // Directly check if authority matches any in the rule's list
         pasgauthority = (ASGAUTHORITY *)ellFirst(&pasgrule->authList);
         while(pasgauthority) {
+            // Split the Authority chain and check each part separately
+            char pauthoritychain[MAX_AUTH_CHAIN_STRING];
+            strncpy(pauthoritychain, pasgclient->identity.authority, sizeof(pauthoritychain));
+            pauthoritychain[sizeof(pauthoritychain) - 1] = '\0';
+
+            // Tokenize authority by '\n'
+            const char *pauthority = strtok(pauthoritychain, "\n");
+            while (pauthority) {
+                if(strcmp(pasgauthority->pauthority->name, pauthority) == 0) {
+                    goto check_calc;
+                }
+                pauthority = strtok(NULL, "\n");
+            }
             if(strcmp(pasgauthority->pauthority->name, pasgclient->identity.authority) == 0) {
                 goto check_calc;
             }
