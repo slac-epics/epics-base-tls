@@ -59,6 +59,8 @@ static UAG *asUagAdd(const char *uagName);
 static long asUagAddUser(UAG *puag,const char *user);
 static HAG *asHagAdd(const char *hagName);
 static long asHagAddHost(HAG *phag,const char *host);
+static AUTHCHAIN *asAddAuthority(const char *name, const char *chain);
+static const char *asGetAuthority(const char *name);
 static ASG *asAsgAdd(const char *asgName);
 static long asAsgAddInp(ASG *pasg,const char *inp,int inpIndex);
 static ASGRULE *asAsgAddRule(ASG *pasg,asAccessRights access,int level);
@@ -599,6 +601,7 @@ int epicsStdCall asDumpFP(
     UAGNAME     *puagname;
     HAG         *phag;
     HAGNAME     *phagname;
+    AUTHCHAIN   *pauthchain;
     ASG         *pasg;
     ASGINP      *pasginp;
     ASGRULE     *pasgrule;
@@ -634,6 +637,22 @@ int epicsStdCall asDumpFP(
             if(phagname) fprintf(fp,","); else fprintf(fp,"}\n");
         }
         phag = (HAG *)ellNext(&phag->node);
+    }
+    pauthchain = (AUTHCHAIN *)ellFirst(&pasbase->authList);
+    while(pauthchain) {
+        fprintf(fp,"AUTHORITY(%s: ",pauthchain->name);
+        char token_buf[MAX_AUTH_CHAIN_STRING];
+        strncpy(token_buf, pauthchain->chain, sizeof(token_buf));
+        token_buf[sizeof(token_buf) - 1] = '\0';
+        const char *token = strtok(token_buf, "\n");
+        int first = 1;
+        while (token) {
+            fprintf(fp,"%s%s", (first ? "" : " -> "), token);
+            first = 0;
+            token = strtok(NULL, "\n");
+        }
+        fprintf(fp,")\n");
+        pauthchain = (AUTHCHAIN *)ellNext(&pauthchain->node);
     }
     pasg = (ASG *)ellFirst(&pasbase->asgList);
     if(!pasg) fprintf(fp,"No ASGs\n");
@@ -700,7 +719,7 @@ int epicsStdCall asDumpFP(
             }
             if(pasgauthority) fprintf(fp,"\t\tAUTHORITY(");
             while(pasgauthority) {
-                fprintf(fp,"\"%s\"",pasgauthority->pauthority->name);
+                fprintf(fp,"%s",pasgauthority->pauthority->name);
                 pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
                 if(pasgauthority) fprintf(fp,","); else fprintf(fp,")\n");
             }
@@ -900,7 +919,7 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
             if(pasgauthority) {
                 fprintf(fp,"\t\tAUTHORITY(");
                 while(pasgauthority) {
-                    fprintf(fp,"\"%s\"",pasgauthority->pauthority->name);
+                    fprintf(fp,"%s",pasgauthority->pauthority->name);
                     pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
                     if(pasgauthority) fprintf(fp,","); else fprintf(fp,")\n");
                 }
@@ -1201,20 +1220,11 @@ check_authority:
         // Directly check if authority matches any in the rule's list
         pasgauthority = (ASGAUTHORITY *)ellFirst(&pasgrule->authList);
         while(pasgauthority) {
-            // Split the Authority chain and check each part separately
-            char pauthoritychain[MAX_AUTH_CHAIN_STRING];
-            strncpy(pauthoritychain, pasgclient->identity.authority, sizeof(pauthoritychain));
-            pauthoritychain[sizeof(pauthoritychain) - 1] = '\0';
-
-            // Tokenize authority by '\n'
-            const char *pauthority = strtok(pauthoritychain, "\n");
-            while (pauthority) {
-                if(strcmp(pasgauthority->pauthority->name, pauthority) == 0) {
-                    goto check_calc;
-                }
-                pauthority = strtok(NULL, "\n");
+            const char * rule_authority = asGetAuthority(pasgauthority->pauthority->name);
+            if ( !rule_authority ) {
+                goto next_rule;
             }
-            if(strcmp(pasgauthority->pauthority->name, pasgclient->identity.authority) == 0) {
+            if(strncmp(rule_authority, pasgclient->identity.authority, strlen(rule_authority)) == 0) {
                 goto check_calc;
             }
             pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
@@ -1460,7 +1470,92 @@ static long asHagAddHost(HAG *phag,const char *host)
     ellAdd(&phag->list, &phagname->node);
     return 0;
 }
-
+
+/**
+ * @brief Adds a new authority chain to the linked list of authority chains.
+ * Inserts the new authority chain in alphabetical order based on its name.
+ *
+ * If a duplicate name is found, the function logs an error message and returns NULL.
+ *
+ * @param name The name of the authority chain to be added.
+ * @param chain The authority chain string (a chain of common names - newline-delimited, ordered from Root to Issuer).
+ * @return A pointer to the newly created AUTHCHAIN structure if successful, or NULL if an error occurs.
+ */
+AUTHCHAIN *asAddAuthority(const char *name, const char *chain) {
+    AUTHCHAIN         *pprev;
+    AUTHCHAIN         *pnext;
+    AUTHCHAIN         *pauth;
+    int         cmpvalue;
+    ASBASE      *pasbase = (ASBASE *)pasbasenew;
+
+    /*Insert in alphabetic order*/
+    pnext = (AUTHCHAIN *)ellFirst(&pasbase->authList);
+    while(pnext) {
+        cmpvalue = strcmp(name,pnext->name);
+        if(cmpvalue<0) break;
+        if(cmpvalue==0) {
+            errlogPrintf("Duplicate Named Certificate Authority '%s'\n", name);
+            return(NULL);
+        }
+        pnext = (AUTHCHAIN *)ellNext(&pnext->node);
+    }
+    const size_t name_len = strlen(name);
+    pauth = asCalloc(1,sizeof(AUTHCHAIN)+name_len+strlen(chain)+2);
+    ellInit(&pauth->list);
+    pauth->name = (char *)(pauth+1);
+    strcpy(pauth->name, name);
+    pauth->chain = (pauth->name+name_len +1);
+    strcpy(pauth->chain, chain);
+    if(pnext==NULL) { /*Add to end of list*/
+        ellAdd(&pasbase->authList,&pauth->node);
+    } else {
+        pprev = (AUTHCHAIN *)ellPrevious(&pnext->node);
+        ellInsert(&pasbase->authList,&pprev->node,&pauth->node);
+    }
+    return(pauth);
+}
+
+/**
+ * @brief Retrieves the authority chain associated with a given name.
+ *
+ * This function searches for a specified authority name in an alphabetically
+ * ordered list. If the name is found, the corresponding authority chain is
+ * returned. If the name is not found, an error message is logged, and a
+ * `NULL` value is returned.
+ *
+ * @param name The name of the authority to search for.
+ *             Expected to be unique and match the order in the list.
+ *
+ * @return The corresponding authority chain for the specified name as a
+ *         constant character pointer. If the authority name is not found,
+ *         returns `NULL`.  newline-delimited, ordered from Root to Issuer
+ *
+ * @note The function assumes that the list of authorities in `authList` is
+ *       in alphabetical order for efficient searching.
+ *
+ * @note Logs an error if the specified authority name is not found in the
+ *       list.
+ *
+ * @warning If the global pointer `pasbasenew` is uninitialized or invalid,
+ *          behavior is undefined.
+ */
+const char *asGetAuthority(const char *name) {
+    ASBASE      *pasbase = (ASBASE *)pasbasenew;
+
+    /*Assumes the list is in alphabetic order*/
+    AUTHCHAIN *pnext = (AUTHCHAIN *) ellFirst(&pasbase->authList);
+    while(pnext) {
+        const int comparison = strcmp(name, pnext->name);
+        if(comparison<0) break;
+        if(comparison==0) {
+            return pnext->chain;
+        }
+        pnext = (AUTHCHAIN *)ellNext(&pnext->node);
+    }
+    errlogPrintf("Certificate Authority Not Defined '%s'\n", name);
+    return(NULL);
+}
+
 static ASG *asAsgAdd(const char *asgName)
 {
     ASG         *pprev;
@@ -1711,7 +1806,7 @@ static long asAsgRuleCalc(ASGRULE *pasgrule,const char *calc)
 /**
  * @brief Disable a rule if it contains unsupported elements
  * @param pasgrule the rule to disable
- * @return Non-zero if rule was not disabled
+ * @return Non-zero if the rule was not disabled
  */
 static long asAsgRuleDisable(ASGRULE *pasgrule) {
     if (!pasgrule) return 1;

@@ -59,8 +59,8 @@ static const char hostname_config[] = ""
 /**
  * @brief Test data with METHOD, AUTHORITY, and PROTOCOL Access Security Group configurations
  *
- * This is a test case for `METHOD`, `AUTHORITY`, and `PROTOCOL` Access Security Group configurations
- * It includes a Access Security Group (ASG) that is configured to allow access
+ * This is a test case for `METHOD`, `AUTHORITY`, and `PROTOCOL` Access Security Group configurations.
+ * It includes an Access Security Group (ASG) that is configured to allow access
  * to PV resources controlled by `METHOD` and `AUTHORITY` constraints.
  * It also showcases the use of `PROTOCOL` to specify constraints based on the transport layer security used.
  * It also includes an example of the `RPC` permission type for the `rwx` rule.
@@ -69,6 +69,13 @@ static const char method_auth_config[] = ""
     "UAG(bar) {boss}\n"
     "UAG(foo) {testing}\n"
     "UAG(ops) {geek}\n"
+
+    "AUTHORITY(AUTH_EPICS_ROOT, \"EPICS Org Root CA\") {\n"
+    "	AUTHORITY(AUTH_INTERMEDIATE_CA, \"Intermediate CA\") {\n"
+    "		AUTHORITY(AUTH_ORNL_CA, \"ORNL Org CA\")\n"
+    "	}\n"
+    "	AUTHORITY(AUTH_UNRELATED_CA, \"Unrelated CA\")\n"
+    "}\n"
 
     "ASG(DEFAULT) {\n"
     "	RULE(0, NONE)\n"
@@ -80,7 +87,6 @@ static const char method_auth_config[] = ""
     "		UAG(foo,ops)\n"
     "		METHOD(\"ca\")\n"
     "		PROTOCOL(\"TCP\")\n"
-    "		AUTHORITY(\"Epics Org Root CA\")\n"
     "	}\n"
     "}\n"
 
@@ -89,7 +95,7 @@ static const char method_auth_config[] = ""
     "	RULE(1, WRITE, TRAPWRITE) {\n"
     "		UAG(foo)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"Intermediate CA\")\n"
+    "		AUTHORITY(AUTH_UNRELATED_CA)\n"
     "	}\n"
     "}\n"
 
@@ -98,7 +104,7 @@ static const char method_auth_config[] = ""
     "	RULE(1, RPC) {\n"
     "		UAG(bar)\n"
     "		METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
-    "		AUTHORITY(\"Intermediate CA\", \"ORNL Org CA\")\n"
+    "		AUTHORITY(AUTH_UNRELATED_CA, AUTH_ORNL_CA)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n";
@@ -115,6 +121,11 @@ static const char *expected_method_auth_config =
     "UAG(foo) {testing}\n"
     "UAG(ops) {geek}\n"
 
+    "AUTHORITY(AUTH_EPICS_ROOT: EPICS Org Root CA)\n"
+    "AUTHORITY(AUTH_INTERMEDIATE_CA: EPICS Org Root CA -> Intermediate CA)\n"
+    "AUTHORITY(AUTH_ORNL_CA: EPICS Org Root CA -> Intermediate CA -> ORNL Org CA)\n"
+    "AUTHORITY(AUTH_UNRELATED_CA: EPICS Org Root CA -> Unrelated CA)\n"
+
     "ASG(DEFAULT) {\n"
     "	RULE(0,NONE,NOTRAPWRITE)\n"
     "}\n"
@@ -124,7 +135,6 @@ static const char *expected_method_auth_config =
     "	RULE(1,READ,NOTRAPWRITE) {\n"
     "		UAG(foo,ops)\n"
     "		METHOD(\"ca\")\n"
-    "		AUTHORITY(\"Epics Org Root CA\")\n"
     "		PROTOCOL(\"tcp\")\n"
     "	}\n"
     "}\n"
@@ -134,7 +144,7 @@ static const char *expected_method_auth_config =
     "	RULE(1,WRITE,TRAPWRITE) {\n"
     "		UAG(foo)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"Intermediate CA\")\n"
+    "		AUTHORITY(AUTH_UNRELATED_CA)\n"
     "	}\n"
     "}\n"
 
@@ -143,7 +153,7 @@ static const char *expected_method_auth_config =
     "	RULE(1,RPC,NOTRAPWRITE) {\n"
     "		UAG(bar)\n"
     "		METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
-    "		AUTHORITY(\"Intermediate CA\",\"ORNL Org CA\")\n"
+    "		AUTHORITY(AUTH_UNRELATED_CA,AUTH_ORNL_CA)\n"
     "		PROTOCOL(\"tls\")\n"
     "	}\n"
     "}\n";
@@ -173,7 +183,6 @@ static const char *expected_ro_rules_config =
     "	RULE(1,READ,NOTRAPWRITE) {\n"
     "		UAG(foo,ops)\n"
     "		METHOD(\"ca\")\n"
-    "		AUTHORITY(\"Epics Org Root CA\")\n"
     "		PROTOCOL(\"tcp\")\n"
     "	}\n"
     "}\n";
@@ -191,7 +200,7 @@ static const char *expected_rw_rules_config =
     "	RULE(1,WRITE,TRAPWRITE) {\n"
     "		UAG(foo)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"Intermediate CA\")\n"
+    "		AUTHORITY(AUTH_UNRELATED_CA)\n"
     "	}\n"
     "}\n";
 
@@ -208,7 +217,7 @@ static const char *expected_rwx_rules_config =
     "	RULE(1,RPC,NOTRAPWRITE) {\n"
     "		UAG(bar)\n"
     "		METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
-    "		AUTHORITY(\"Intermediate CA\",\"ORNL Org CA\")\n"
+    "		AUTHORITY(AUTH_UNRELATED_CA,AUTH_ORNL_CA)\n"
     "		PROTOCOL(\"tls\")\n"
     "	}\n"
     "}\n";
@@ -217,42 +226,77 @@ static const char *expected_rwx_rules_config =
  * @brief Test data for validating hierarchical certificate-based access control.
  *
  * @details
- * This test dataset models a delegated certificate authority structure, using the fictional
- * Oak Ridge National Laboratory (ORNL) as an example. It extends the traditional EPICS ACF syntax
- * with additional fields to support public key infrastructure (PKI) concepts, such as
+ * This test dataset validates the delegation of authority and inheritance in certificate chains by modeling
+ * Oak Ridge National Laboratory's (ORNL) facilities and organizational structure. The test validates:
  *
- * - @b METHOD: Specifies the authentication method (e.g., "x509") accepted by a RULE
- * - @b AUTHORITY: Lists any certificate authorities that are accepted by a RULE
- * - @b PROTOCOL: Identifies the transport or security layer (e.g., "TLS") accepted by a RULE
+ * 1. Hierarchical Certificate Authority chains:
+ *    - Certificate Authorities can delegate trust by signing intermediate Certificate Authorities
+ *    - Client certificates inherit trust from their entire signing chain
+ *    - Multiple independent Certificate Authority hierarchies can coexist (e.g., ORNL Root vs ORNL IT Root)
  *
- * A client provides a chain of authority with in its IDENTITY, and this is used to determine if
- * access rules are satisfied. For example, if a user's certificate is signed by an intermediate
- * CA, which is in turn signed by a trusted root, that user can be granted access
- * under rules referring only to the root.
+ * 2. Fine-grained access control:
+ *    - Role-based access through User Access Groups (UAGs)
+ *    - Facility-specific device grouping and permissions
+ *    - Separation of admin, operations and user privileges
  *
- * The structure supports inheritance of authority and demonstrates decoupling of security management
- * across multiple divisions (SNS, HFIR) while maintaining centralized trust.
+ * The test extends EPICS Access Control File (ACF) syntax with PKI concepts:
  *
- * Certificate Authority Hierarchy:
- *   ORNL Root CA
- *   --> SNS Intermediate CA
- *       --> SNS Control Systems CA
- *           --> CERTIFICATE: Control System Devices
- *       --> SNS Beamline Operations CA
- *           --> CERTIFICATE: Beamline IOCs
- *   --> HFIR Intermediate CA
- *       --> HFIR Control Systems CA
- *           --> CERTIFICATE: Control System Devices
- *       --> HFIR Sample Environment CA
- *           --> CERTIFICATE: Sample Env. IOCs
- *   --> ORNL User Certificate Authority
- *       --> CERTIFICATE: ORNL Users
+ * - @b METHOD: The authentication mechanism (e.g., "x509") required by a RULE
+ * - @b AUTHORITY: The Certificate Authority(s) accepted by a RULE. Matches if client's chain contains any listed Certificate Authority
+ * - @b PROTOCOL: Required transport security (e.g., "TLS") for the RULE
  *
- * The test data includes users, devices, and role-based user access groups (UAGs), tied to access security
- * groups (ASGs) and specific access rules (RULE), simulating real-world delegation in a secure control
- * system environment.
+ * Organization & Certificate Structure:
+ *
+ * Laboratory Level:
+ *   ORNL Root CA (signs facility CAs)
+ *   ORNL IT Root CA (signs user certificates)
+ *   --> ORNL User CA (issues all user certificates)
+ *
+ * Spallation Neutron Source (SNS):
+ *   SNS Intermediate CA
+ *   --> SNS Control Systems CA (issues controls system device certs)
+ *   --> SNS Beamline Operations CA (issues beamline equipment certs)
+ *   Groups: Controls, Beamline Operations
+ *   Roles per group: Admins, Operators, Users, Devices
+ *
+ * High Flux Isotope Reactor (HFIR):
+ *   HFIR Intermediate CA
+ *   --> HFIR Control Systems CA (issues reactor control system certs)
+ *   --> HFIR Sample Environment CA (issues sample environment equipment certs)
+ *   Groups: Controls, Sample Environment
+ *   Roles per group: Admins, Operators, Users, Devices
+ *
+ * The test data includes:
+ * - Complete Certificate Authority hierarchies for ORNL, SNS and HFIR
+ * - User Access Groups for each facility/group/role combination
+ * - Access Security Groups with rules validating:
+ *   - Role-based access (admin vs operator vs user)
+ *   - Certificate chain validation
+ *   - Transport security requirements
+ *   - Future-proofing support (GROUP keyword ignored)
+ *
+ * All human users have certificates issued by the ORNL User CA, while devices
+ * have certificates from their respective facility CAs. This enforces proper
+ * separation between user authentication and device authorization.
  */
 static const char chained_auth_config[] = ""
+    // Authority chain containing SNS and HIFR Certificate Authorities
+    "AUTHORITY(AUTH_ORNL_ROOT, \"ORNL Root CA\") {\n"
+    "	AUTHORITY(\"SNS Intermediate CA\") {\n"
+    "		AUTHORITY(AUTH_SNS_CTRL, \"SNS Control Systems CA\")\n"
+    "		AUTHORITY(AUTH_BEAMLINE, \"SNS Beamline Operations CA\")\n"
+    "   }\n"
+    "	AUTHORITY(\"HFIR Intermediate CA\") {\n"
+    "		AUTHORITY(AUTH_HIFR_CTRL, \"HFIR Control Systems CA\")\n"
+    "		AUTHORITY(AUTH_HIFR_SAMPLE, \"HFIR Sample Environment CA\")\n"
+    "   }\n"
+    "}\n"
+
+    // Authority chain containing ORNL IT User Certificate Authorities
+    "AUTHORITY(AUTH_ORNL_IT_ROOT, \"ORNL IT Root CA\") {\n"
+    "	AUTHORITY(AUTH_ORNL_USERS, \"ORNL User Certificate Authority\")\n"
+    "}\n"
+
     "UAG(ORNL:ADMINS) {s.streiffer}\n"
 
     "UAG(SNS:ADMINS) {s.streiffer}\n"
@@ -275,129 +319,147 @@ static const char chained_auth_config[] = ""
     "UAG(HFIR:ENV:USERS) {g.lynn, h.overman, i.bachman}\n"
     "UAG(HFIR:ENV:DEVICES) {HFIR:ENV:IOC:TEMP01, HFIR:ENV:IOC:MAG02}\n"
 
+    // Try out GROUP syntax: will be ignored by future proofing functionality
+    "GROUP(PHYSICS_GROUP) {physics}\n"
+
     "ASG(DEFAULT) {\n"
     "	RULE(0, NONE)\n"
     "}\n"
 
+    "ASG(PHYSICS) {\n"
+    // ORNL Physics Users: To try out GROUPS syntax: ignored due to future proofing
+    "	RULE(0, WRITE, TRAPWRITE) {\n"
+    "		GROUP(PHYSICS_GROUP)\n"
+    "		METHOD(\"x509\")\n"
+    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
+    "		PROTOCOL(\"TLS\")\n"
+    "	}\n"
+    "}\n"
+
     "ASG(ADMIN) {\n"
+    // ORNL Admin Users
     "	RULE(0, WRITE, TRAPWRITE) {\n"
     "		UAG(ORNL:ADMINS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(SNS:ADMIN) {\n"
+    // SNS Admin Users
     "	RULE(0, WRITE, TRAPWRITE) {\n"
     "		UAG(SNS:ADMINS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(SNS:CTRL:ADMIN) {\n"
+    // SNS Controls Admin Users
     "	RULE(0, WRITE, TRAPWRITE) {\n"
     "		UAG(SNS:CTRL:ADMINS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(SNS:CONTROLS) {\n"
+    // SNS Controls Users
     "	RULE(0, READ) {\n"
     "		UAG(SNS:CTRL:USERS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
+    // SNS Controls Operators and Devices
     "	RULE(1, WRITE, TRAPWRITE) {\n"
     "		UAG(SNS:CTRL:OPS, SNS:CTRL:DEVICES)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"SNS Control Systems CA\",\"ORNL User Certificate Authority\")\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
-    "}\n"
-
-    "ASG(SNS:BEAM:ADMIN) {\n"
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(SNS:BEAM:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS, AUTH_SNS_CTRL)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(SNS:BEAMLINE) {\n"
+    // SNS Beamline Users
     "	RULE(0, READ) {\n"
     "		UAG(SNS:BEAM:USERS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
+    // SNS Beamline Operators and Devices
     "	RULE(1, WRITE, TRAPWRITE) {\n"
     "		UAG(SNS:BEAM:OPS, SNS:BEAM:DEVICES)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"SNS Beamline Operations CA\",\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS, AUTH_BEAMLINE)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(HFIR:ADMIN) {\n"
+    // HIFR Admin Users
     "	RULE(0, WRITE, TRAPWRITE) {\n"
     "		UAG(HFIR:ADMINS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(HFIR:CTRL:ADMIN) {\n"
+    // HIFR Controls Admin Users
     "	RULE(0, WRITE, TRAPWRITE) {\n"
     "		UAG(HFIR:CTRL:ADMINS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(HFIR:CONTROLS) {\n"
+    // HIFR Controls Users
     "	RULE(0, READ) {\n"
     "		UAG(HFIR:CTRL:USERS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
+    // HIFR Controls Operators and Devices
     "	RULE(1, WRITE, TRAPWRITE) {\n"
     "		UAG(HFIR:CTRL:OPS, HFIR:CTRL:DEVICES)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"HFIR Control Systems CA\",\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_HIFR_CTRL,AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(HFIR:ENV:ADMIN) {\n"
+    // HIFR Sample Environment Admin Users
     "	RULE(0, WRITE, TRAPWRITE) {\n"
     "		UAG(HFIR:ENV:ADMINS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n"
 
     "ASG(HFIR:ENVIRONMENT) {\n"
     "	RULE(0, READ) {\n"
+    // HIFR Sample Environment Users
     "		UAG(HFIR:ENV:USERS)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
+    // HIFR Sample Environment Operators and Devices
     "	RULE(1, WRITE, TRAPWRITE) {\n"
     "		UAG(HFIR:ENV:OPS, HFIR:ENV:DEVICES)\n"
     "		METHOD(\"x509\")\n"
-    "		AUTHORITY(\"HFIR Sample Environment CA\",\"ORNL User Certificate Authority\")\n"
+    "		AUTHORITY(AUTH_HIFR_SAMPLE,AUTH_ORNL_USERS)\n"
     "		PROTOCOL(\"TLS\")\n"
     "	}\n"
     "}\n";
@@ -947,9 +1009,8 @@ static void setProtocol(enum AsProtocol the_protocol)
  *
  * @details
  * This function takes the global variable `asAuthority`, which contains a newline-delimited
- * list of certificate authorities ordered from signee to signer (i.e., issuer CA first,
- * root CA last), and converts it into a single-line, human-readable string where the order
- * is reversed to show signer to signee (i.e., root to issuer).
+ * list of certificate authorities ordered from signer to signee (i.e., root CA first,
+ * issuer CA last), and converts it into a single-line, human-readable string
  *
  * The resulting format resembles:
  *   "Root Certificate Authority -> Intermediate CA -> Issuer CA"
@@ -965,25 +1026,34 @@ static void setProtocol(enum AsProtocol the_protocol)
 static void parseCertAuthChain(char *parsedCertAuthChainBuf) {
     if (asAuthority) {
         parsedCertAuthChainBuf[0] = '\0';
-        const char *lines[MAX_CERT_AUTH_CHAIN_LENGTH];
-        int count = 0;
+        char *p = parsedCertAuthChainBuf;
 
         char unParsedAuthority[MAX_AUTH_CHAIN_STRING];
         strncpy(unParsedAuthority, asAuthority, sizeof(unParsedAuthority));
         unParsedAuthority[sizeof(unParsedAuthority) - 1] = '\0';
 
-        // Tokenize lines by '\n'
         const char *token = strtok(unParsedAuthority, "\n");
-        while (token && count < MAX_CERT_AUTH_CHAIN_LENGTH) {
-            lines[count++] = token;
-            token = strtok(NULL, "\n");
-        }
+        if (token) {
+            size_t len = 0;
+            size_t remainingSpace = MAX_AUTH_CHAIN_STRING;
+            len = strlen(token);
+            if (len < remainingSpace) {
+                strcpy(p, token);
+                p += len;
+                remainingSpace -= len;
 
-        // Append in reverse order
-        for (int i = count - 1; i >= 0; --i) {
-            strncat(parsedCertAuthChainBuf, lines[i], MAX_AUTH_CHAIN_STRING - strlen(parsedCertAuthChainBuf) - 1);
-            if (i > 0) {
-                strncat(parsedCertAuthChainBuf, " -> ", MAX_AUTH_CHAIN_STRING - strlen(parsedCertAuthChainBuf) - 1);
+                while (((token = strtok(NULL, "\n"))) && remainingSpace > 4) {
+                    len = strlen(token);
+                    if (len + 4 < remainingSpace) {
+                        strcpy(p, " -> ");
+                        p += 4;
+                        strcpy(p, token);
+                        p += len;
+                        remainingSpace -= (len + 4);
+                    } else {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -1276,26 +1346,35 @@ static void testMethodAndAuth(void)
     testAccess("rwx", 0);
 
     setUser("testing");
-    setAuthority("Epics Org Root CA");
 
     testAccess("ro", 1);
     testAccess("rw", 0);
     testAccess("rwx", 0);
 
     setMethod("x509");
+    setAuthority(
+        "EPICS Org Root CA"
+        );
 
     testAccess("ro", 0);
     testAccess("rw", 0);
     testAccess("rwx", 0);
 
-    setAuthority("Intermediate CA");
+    setAuthority(
+        "EPICS Org Root CA\n"
+        "Unrelated CA"
+        );
     setProtocol(AS_PROTOCOL_TLS);
 
     testAccess("ro", 0);
     testAccess("rw", 3);
     testAccess("rwx", 0);
 
-    setAuthority("ORNL Org CA");
+    setAuthority(
+        "EPICS Org Root CA\n"
+        "Intermediate CA\n"
+        "ORNL Org CA"
+        );
     testAccess("ro", 0);
     testAccess("rw", 0);
 
@@ -1336,6 +1415,7 @@ static void testMethodAndAuth(void)
  *           --> CERTIFICATE: Control System Devices
  *       --> HFIR Sample Environment CA
  *           --> CERTIFICATE: Sample Env. IOCs
+ *   ORNL IT Root CA
  *   --> ORNL User Certificate Authority
  *       --> CERTIFICATE: ORNL Users
  */
@@ -1353,8 +1433,8 @@ static void testCertificateChains(void) {
     // Laboratory Directorate and global admin
     setUser("s.streiffer");
     setAuthority(
-        "ORNL User Certificate Authority\n"
-        "ORNL Root CA"
+        "ORNL IT Root CA\n"
+        "ORNL User Certificate Authority"
         );
     testAccess("ADMIN", 3);
 
@@ -1385,7 +1465,7 @@ static void testCertificateChains(void) {
     // Spallation Neutron Source beamline operations
     setUser("f.pilat");
     testAccess("SNS:ADMIN", 0);
-    testAccess("SNS:BEAM:ADMIN", 3);
+    testAccess("SNS:BEAM:ADMIN", 0);  // No such security group
     testAccess("SNS:BEAMLINE", 3);
     setUser("bee.op");
     testAccess("SNS:BEAMLINE", 3);
@@ -1405,9 +1485,9 @@ static void testCertificateChains(void) {
 
     // Spallation Neutron Source Devices
     setAuthority(
-        "SNS Control Systems CA\n"
+        "ORNL Root CA\n"
         "SNS Intermediate CA\n"
-        "ORNL Root CA"
+        "SNS Control Systems CA"
         );
     setUser("SNS:CTRL:IOC:VAC01");
     testAccess("SNS:CONTROLS", 3);
@@ -1421,23 +1501,23 @@ static void testCertificateChains(void) {
     setUser("SNS:BEAM:IOC:DET01");
     testAccess("SNS:BEAMLINE", 0); // Wrong CA chain
     setAuthority(
-        "SNS Intermediate CA\n"
-        "ORNL Root CA"
+        "ORNL Root CA\n"
+        "SNS Intermediate CA"
         );
-    testAccess("SNS:BEAMLINE", 0); // Incomplete CA chain
+    testAccess("SNS:BEAMLINE", 0); // Incomplete CA
     setAuthority( "" );
     testAccess("SNS:BEAMLINE", 0); // No CA chain
     setAuthority(
-        "Sub CA\n"
-        "SNS Beamline Operations CA\n"
+        "ORNL Root CA\n"
         "SNS Intermediate CA\n"
-        "ORNL Root CA"
+        "SNS Beamline Operations CA\n"
+        "Sub CA"
         );
-    testAccess("SNS:BEAMLINE", 3); // Extra Certificate Authority in Chain is ok
+    testAccess("SNS:BEAMLINE", 3); // Unknown Leaf Certificate is ok
     setAuthority(
-        "SNS Beamline Operations CA\n"
+        "ORNL Root CA\n"
         "SNS Intermediate CA\n"
-        "ORNL Root CA"
+        "SNS Beamline Operations CA"
         );
     testAccess("SNS:BEAMLINE", 3);
     setUser("SNS:BEAM:IOC:COLL02");
@@ -1450,8 +1530,8 @@ static void testCertificateChains(void) {
     // High-Flux Isotope Reactor
     setUser("s.streiffer");
     setAuthority(
-        "ORNL User Certificate Authority\n"
-        "ORNL Root CA"
+        "ORNL IT Root CA\n"
+        "ORNL User Certificate Authority"
         );
     testAccess("HFIR:ADMIN", 3);
 
@@ -1499,9 +1579,9 @@ static void testCertificateChains(void) {
 
     // High-Flux Isotope Reactor Devices
     setAuthority(
-        "HFIR Control Systems CA\n"
+        "ORNL Root CA\n"
         "HFIR Intermediate CA\n"
-        "ORNL Root CA"
+        "HFIR Control Systems CA"
         );
     setUser("HFIR:CTRL:IOC:REACT01");
     testAccess("HFIR:CONTROLS", 3);
@@ -1513,23 +1593,23 @@ static void testCertificateChains(void) {
     setUser("HFIR:ENV:IOC:TEMP01");
     testAccess("HFIR:ENVIRONMENT", 0); // Wrong CA chain
     setAuthority(
-        "HFIR Intermediate CA\n"
-        "ORNL Root CA"
+        "ORNL Root CA\n"
+        "HFIR Intermediate CA"
         );
     testAccess("HFIR:ENVIRONMENT", 0); // Incomplete CA chain
     setAuthority( "" );
     testAccess("HFIR:ENVIRONMENT", 0); // No CA chain
     setAuthority(
-        "Sub CA\n"
-        "HFIR Sample Environment CA\n"
+        "ORNL Root CA\n"
         "HFIR Intermediate CA\n"
-        "ORNL Root CA"
+        "HFIR Sample Environment CA\n"
+        "Sub CA"
         );
     testAccess("HFIR:ENVIRONMENT", 3); // Extra Certificate Authority in Chain is ok
     setAuthority(
-        "HFIR Sample Environment CA\n"
+        "ORNL Root CA\n"
         "HFIR Intermediate CA\n"
-        "ORNL Root CA"
+        "HFIR Sample Environment CA"
         );
     testAccess("HFIR:ENVIRONMENT", 3);
     setUser("HFIR:ENV:IOC:MAG02");

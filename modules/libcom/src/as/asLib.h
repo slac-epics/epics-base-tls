@@ -176,6 +176,7 @@ struct gphPvt;
 typedef struct asBase{
     ELLLIST         uagList;
     ELLLIST         hagList;
+    ELLLIST         authList;
     ELLLIST         asgList;
     struct gphPvt   *phash;
 } ASBASE;
@@ -202,6 +203,13 @@ typedef struct hag{
     char            *name;
     ELLLIST         list;   /*list of HAGNAME*/
 } HAG;
+// Defs for Authority Chains
+typedef struct authchain {
+    ELLNODE         node;
+    char *          name;       /* Authority chain ID */
+    char *          chain;      /* Authority Chain: Common Name or newline-separated Chain of Common Names (root to issuer) */
+    ELLLIST         list;       /* List of named Authority definitions (pointer to this list) */
+} AUTHCHAIN;
 /*Defs for Access SecurityGroups*/
 typedef struct {
     ELLNODE         node;
@@ -307,7 +315,7 @@ LIBCOM_API void asFreeAll(ASBASE *pasbase);
 // The maximum length of the Authority string that can be processed
 // by the EPICS Authorization system.  Set as large as you like to handle the longest string you think will be provided.
 // Holds the concatenated common names of the chain of authority all the way back to the root certificate.
-#define MAX_AUTH_CHAIN_STRING 1024
+#define MAX_AUTH_CHAIN_STRING 2048
 #ifdef __cplusplus
 }
 #endif

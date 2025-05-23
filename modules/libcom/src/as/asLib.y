@@ -18,6 +18,24 @@ static UAG *yyUag=NULL;
 static HAG *yyHag=NULL;
 static ASG *yyAsg=NULL;
 static ASGRULE *yyAsgRule=NULL;
+
+static ELLLIST yyCertPath;
+typedef struct {
+    ELLNODE node;
+    char *commonName;
+} CertPathNode_t;
+
+static int saveAuthorityEntry(char *name);
+
+static int pushCertPath(char *commonName);
+static void popCertPath();
+
+static char *getCurrentCertPath();
+
+static void initCertPathStack();
+static void freeCertPathStack();
+
+static int _pushCertPath(const char *commonName);
 %}
 
 %start asconfig
@@ -26,13 +44,13 @@ static ASGRULE *yyAsgRule=NULL;
 %token <Int64> tokenINT64
 %token <Float64> tokenFLOAT64
 
-%union
-{
+%union {
     epicsInt64 Int64;
     epicsFloat64 Float64;
     char *Str;
 }
 
+%type <Str> auth_head
 %type <Str> non_rule_keyword
 %type <Str> generic_block_elem_name
 %type <Str> generic_block_elem
@@ -49,6 +67,7 @@ asconfig_item:  tokenUAG uag_head uag_body
     |   tokenUAG uag_head
     |   tokenHAG hag_head hag_body
     |   tokenHAG hag_head
+    |   tokenAUTHORITY top_auth { popCertPath(); }
     |   tokenASG asg_head asg_body
     |   tokenASG asg_head
     |   generic_item
@@ -210,6 +229,50 @@ hag_host_list_name: tokenSTRING
         if (asHagAddHost(yyHag,$1))
             yyerror("");
         free((void *)$1);
+    }
+    ;
+
+top_auth: top_auth_head  auth_body
+    | top_auth_head
+    ;
+
+top_auth_head:   '(' tokenSTRING ',' tokenSTRING ')'
+    {
+        pushCertPath($4);         // Add this new Certificate Path component to the Certificate Chain
+        saveAuthorityEntry($2);   // Then create a new EPICS Security AUTHORITY with the given name
+    }
+    ;
+
+auth_body: '{' auth_body_item_list '}'
+    ;
+
+auth_body_item_list: auth_body_item auth_body_item_list
+    | auth_body_item
+    ;
+
+auth_body_item: tokenAUTHORITY auth_head
+    {
+        saveAuthorityEntry($2);   // Create a new EPICS Security AUTHORITY with the given name
+    } auth_body
+    {
+        popCertPath();
+    }
+    | tokenAUTHORITY auth_head
+    {
+        saveAuthorityEntry($2);   // Then create a new EPICS Security AUTHORITY with the given name
+        popCertPath();
+    }
+    ;
+
+auth_head: '(' tokenSTRING ',' tokenSTRING ')'
+    {
+        pushCertPath($4);
+        $$ = $2;
+    }
+    | '(' tokenSTRING ')'
+    {
+        pushCertPath($2);
+        $$ = NULL;
     }
     ;
 
@@ -390,6 +453,7 @@ static int yywarn(char *str, char *token)
     yyWarned = TRUE;
     return 0;
 }
+
 static int myParse(ASINPUTFUNCPTR inputfunction)
 {
     static int  FirstFlag = 1;
@@ -404,6 +468,129 @@ static int myParse(ASINPUTFUNCPTR inputfunction)
         yyrestart(NULL);
     }
     FirstFlag = 0;
+    initCertPathStack();    // Initialise the Certificate Chain to store an ongoing stack of certificates as they are parsed
     rtnval = yyparse();
+    freeCertPathStack();    // Free the Certificate Chain
     if(rtnval!=0 || yyFailed) return(-1); else return(0);
 }
+
+/**
+ * Add the given Certificate Authority's Common Name to the Certificate Chain
+ * and signal errors to parser if it fails.
+ * Free up the given Common Name once consumed
+ */
+static int pushCertPath(char *commonName) {
+    if (_pushCertPath(commonName) != 0) {
+        yyerror("Out of memory");
+        free(commonName);
+        return -1;
+    }
+    free(commonName);
+    return 0;
+}
+
+/**
+ * Make an actual entry in EPICS Security in the list of declared named AUTHORITIES keyed on the given AUTHORITY ID.
+ *
+ * This will retrieve the Certificate Chain that has been parsed up till now, including
+ * all parent components that have been seen, and will associate it with the given AUTHORITY ID by
+ * calling `asAddAuthority` to add it to EPICS Security as a named AUTHORITY entry
+ * that can be referenced in an ASG RULE.
+ */
+static int saveAuthorityEntry(char *name) {
+    if (name) {
+        char *auth_chain = getCurrentCertPath();
+        if (!auth_chain) {
+            yyerror("Out of memory");
+            free(name);
+            return -1;
+        }
+
+        if (!asAddAuthority(name, auth_chain)) {
+            char message[100];
+            sprintf(message, "AUTHORITY: %s=%s", name, auth_chain);
+            free(auth_chain);
+            free(name);
+            yyerror(message);
+            return -1;
+        }
+
+        free(auth_chain);
+        free(name);
+    }
+    return 0;
+}
+
+/**
+ * Add the given Certificate Authority's Common Name to the end of the current Certificate Chain
+ */
+static int _pushCertPath(const char *commonName) {
+    CertPathNode_t *node = malloc(sizeof(CertPathNode_t));
+    if (!node) return -1;
+
+    node->commonName = strdup(commonName);
+    if (!node->commonName) {
+        free(node);
+        return -1;
+    }
+
+    ellAdd(&yyCertPath, &node->node);
+    return 0;
+}
+
+/**
+ * Remove the last Common Name that was added to the Certificate Chain
+ */
+static void popCertPath() {
+    CertPathNode_t *node = (CertPathNode_t *)ellLast(&yyCertPath);
+    if (node) {
+        ellDelete(&yyCertPath, &node->node);
+        free(node->commonName);
+        free(node);
+    }
+}
+
+/**
+ * Gets the current Certificate Chain that has been parsed so far.
+ */
+static char *getCurrentCertPath() {
+    size_t total_len = 1;  /* For null terminator */
+    CertPathNode_t *node;
+    char *result;
+
+    /* First pass: calculate required length */
+    for (node = (CertPathNode_t *)ellFirst(&yyCertPath); node;
+         node = (CertPathNode_t *)ellNext(&node->node)) {
+        total_len += strlen(node->commonName) + 1;  /* +1 for newline */
+    }
+
+    result = malloc(total_len);
+    if (!result) return NULL;
+    result[0] = '\0';
+
+    /* Second pass: build string */
+    for (node = (CertPathNode_t *)ellFirst(&yyCertPath); node;
+         node = (CertPathNode_t *)ellNext(&node->node)) {
+        if (result[0]) strcat(result, "\n");
+        strcat(result, node->commonName);
+    }
+
+    return result;
+}
+
+/**
+ * Initialise the Certificate Chain when we start parsing
+ */
+static void initCertPathStack() {
+    ellInit(&yyCertPath);
+}
+
+/**
+ * Free up the Certificate Chain once we're done parsing
+ */
+static void freeCertPathStack() {
+    while (ellFirst(&yyCertPath)) {
+        popCertPath();
+    }
+}
+
