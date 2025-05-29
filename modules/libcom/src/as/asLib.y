@@ -241,6 +241,10 @@ top_auth_head:   '(' tokenSTRING ',' tokenSTRING ')'
         pushCertPath($4);         // Add this new Certificate Path component to the Certificate Chain
         saveAuthorityEntry($2);   // Then create a new EPICS Security AUTHORITY with the given name
     }
+    | '(' tokenSTRING ')'
+    {
+        pushCertPath($2);         // Add this new Certificate Path component to the Certificate Chain
+    }
     ;
 
 auth_body: '{' auth_body_item_list '}'
