@@ -53,7 +53,8 @@ char* yystrdup(const char *inp) {
 %token <Int64> tokenINT64 tokenINP
 %token <Float64> tokenFLOAT64
 
-%union {
+%union
+{
     epicsInt64 Int64;
     epicsFloat64 Float64;
     char *Str;
@@ -380,7 +381,7 @@ rule_list_item: tokenUAG '(' rule_uag_list ')'
             if (asAsgRuleDisable(yyAsgRule))
                 yyerror("");
         }
-        free((void *)$3);
+        free($3);
     }
     |   tokenCALC '(' tokenSTRING ')'
     {
@@ -392,13 +393,6 @@ rule_list_item: tokenUAG '(' rule_uag_list ')'
     {
         yywarn("Ignoring RULE that contains an unsupported keyword", $1);
         free($1);
-        if (asAsgRuleDisable(yyAsgRule))
-            yyerror("");
-    }
-    | rule_generic_block_elem
-    {
-        yywarn("Ignoring RULE containing unsupported PREDICATE", $1);
-        free((void *)$1);
         if (asAsgRuleDisable(yyAsgRule))
             yyerror("");
     }
@@ -436,7 +430,7 @@ rule_method_list_name: tokenSTRING
     {
         if (asAsgRuleMethodAdd(yyAsgRule, $1))
             yyerror("");
-        free((void *)$1);
+        free($1);
     }
     ;
 
@@ -448,7 +442,7 @@ rule_authority_list_name: tokenSTRING
     {
         if (asAsgRuleAuthorityAdd(yyAsgRule, $1))
             yyerror("");
-        free((void *)$1);
+        free($1);
     }
     ;
 
