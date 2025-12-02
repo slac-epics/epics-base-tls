@@ -168,7 +168,7 @@ LIBCOM_API void epicsStdCall asTrapWriteAfterWrite(void *pvt);
 #define S_asLib_noMemory        (M_asLib|14) /*access security: no Memory */
 #define S_asLib_dupMethod       (M_asLib|15) /* Duplicate method name in rule */
 #define S_asLib_dupAuthority    (M_asLib|16) /* Duplicate authority name in rule */
-
+
 /*Private declarations */
 LIBCOM_API extern int asActive;
 
@@ -317,8 +317,9 @@ LIBCOM_API void * epicsStdCall asCalloc(size_t nobj,size_t size);
 LIBCOM_API char * epicsStdCall asStrdup(unsigned char *str);
 LIBCOM_API void asFreeAll(ASBASE *pasbase);
 
-/*The maximum length of the nested Authority definition string from the ACF file that can be dumped*/
+/*The maximum length of the nested Authority definition string from the ACF file that can be dumped */
 #define MAX_AUTH_CHAIN_STRING 2048
+#define MAX_AUTH_NAME_STRING 256
 #ifdef __cplusplus
 }
 #endif

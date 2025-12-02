@@ -516,6 +516,28 @@ int epicsStdCall asDump(
     return asDumpFP(stdout,memcallback,clientcallback,verbose);
 }
 
+static void asDumpCertAuthChainFP(FILE *fp, AUTHCHAIN **ppauthchain) {
+    char token_buf[MAX_AUTH_CHAIN_STRING];
+    char authname[MAX_AUTH_NAME_STRING];
+    while(*ppauthchain) {
+        int indent = 0;
+        strncpy(token_buf, (*ppauthchain)->chain, sizeof(token_buf));
+        token_buf[sizeof(token_buf) - 1] = '\0';
+        const char *token = strtok(token_buf, "\n");
+        while (token) {
+            if (strlen(token) > MAX_AUTH_NAME_STRING) break;
+            strcpy(authname, token);
+            token = strtok(NULL, "\n");
+            fprintf(fp,"%s%*sAUTHORITY(%s%s\"%s\")", indent ? " {\n" : "", indent, "", token ? "" : (*ppauthchain)->name, token ? "" : ", ", authname);
+            indent += 4;
+        }
+        for ( indent -= 8; indent >= 0 ; indent -= 4) fprintf(fp, "\n%*s}", indent, "");
+        fprintf(fp, "\n");
+        *ppauthchain = (AUTHCHAIN *)ellNext(&(*ppauthchain)->node);
+    }
+
+}
+
 int epicsStdCall asDumpFP(
         FILE *fp,
         void (*memcallback)(struct asgMember *,FILE *),
@@ -564,21 +586,7 @@ int epicsStdCall asDumpFP(
         phag = (HAG *)ellNext(&phag->node);
     }
     pauthchain = (AUTHCHAIN *)ellFirst(&pasbase->authList);
-    while(pauthchain) {
-        fprintf(fp,"AUTHORITY(%s: ",pauthchain->name);
-        char token_buf[MAX_AUTH_CHAIN_STRING];
-        strncpy(token_buf, pauthchain->chain, sizeof(token_buf));
-        token_buf[sizeof(token_buf) - 1] = '\0';
-        const char *token = strtok(token_buf, "\n");
-        int first = 1;
-        while (token) {
-            fprintf(fp,"%s%s", (first ? "" : " -> "), token);
-            first = 0;
-            token = strtok(NULL, "\n");
-        }
-        fprintf(fp,")\n");
-        pauthchain = (AUTHCHAIN *)ellNext(&pauthchain->node);
-    }
+    asDumpCertAuthChainFP(fp, &pauthchain);
     pasg = (ASG *)ellFirst(&pasbase->asgList);
     if(!pasg) fprintf(fp,"No ASGs\n");
     while(pasg) {
@@ -596,7 +604,7 @@ int epicsStdCall asDumpFP(
         }
         while(pasginp) {
 
-            fprintf(fp,"\tINP%c(%s)",(pasginp->inpIndex + 'A'),pasginp->inp);
+            fprintf(fp,"    INP%c(%s)",(pasginp->inpIndex + 'A'),pasginp->inp);
             if(verbose) {
                 if((pasg->inpBad & (1ul << pasginp->inpIndex)))
                         fprintf(fp," INVALID");
@@ -610,7 +618,7 @@ int epicsStdCall asDumpFP(
         while(pasgrule) {
             int print_rule_end_brace = FALSE;
             if (pasgrule->ignore) goto next_rule;
-            fprintf(fp,"\tRULE(%d,%s,%s)",
+            fprintf(fp,"    RULE(%d,%s,%s)",
                 pasgrule->level,asAccessName[pasgrule->access],
                 asTrapOption[pasgrule->trapMask]);
             pasguag = (ASGUAG *)ellFirst(&pasgrule->uagList);
@@ -624,59 +632,59 @@ int epicsStdCall asDumpFP(
                 fprintf(fp,"\n");
                 print_rule_end_brace = FALSE;
             }
-            if(pasguag) fprintf(fp,"\t\tUAG(");
+            if(pasguag) fprintf(fp,"        UAG(");
             while(pasguag) {
                 fprintf(fp,"%s",pasguag->puag->name);
                 pasguag = (ASGUAG *)ellNext(&pasguag->node);
                 if(pasguag) fprintf(fp,","); else fprintf(fp,")\n");
             }
-            if(pasghag) fprintf(fp,"\t\tHAG(");
+            if(pasghag) fprintf(fp,"        HAG(");
             while(pasghag) {
                 fprintf(fp,"%s",pasghag->phag->name);
                 pasghag = (ASGHAG *)ellNext(&pasghag->node);
                 if(pasghag) fprintf(fp,","); else fprintf(fp,")\n");
             }
-            if(pasgmethod) fprintf(fp,"\t\tMETHOD(");
+            if(pasgmethod) fprintf(fp,"        METHOD(");
             while(pasgmethod) {
                 fprintf(fp,"\"%s\"",pasgmethod->pmethod->name);
                 pasgmethod = (ASGMETHOD *)ellNext(&pasgmethod->node);
                 if(pasgmethod) fprintf(fp,","); else fprintf(fp,")\n");
             }
-            if(pasgauthority) fprintf(fp,"\t\tAUTHORITY(");
+            if(pasgauthority) fprintf(fp,"        AUTHORITY(");
             while(pasgauthority) {
                 fprintf(fp,"%s",pasgauthority->pauthority->name);
                 pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
                 if(pasgauthority) fprintf(fp,","); else fprintf(fp,")\n");
             }
             if(pasgrule->calc) {
-                fprintf(fp,"\t\tCALC(\"%s\")",pasgrule->calc);
+                fprintf(fp,"        CALC(\"%s\")",pasgrule->calc);
                 if(verbose)
                     fprintf(fp," result=%s",(pasgrule->result==1 ? "TRUE" : "FALSE"));
                 fprintf(fp,"\n");
             }
             if(pasgrule->protocol > 0) {
-                fprintf(fp,"\t\tPROTOCOL(\"tls\")\n");
+                fprintf(fp,"        PROTOCOL(\"tls\")\n");
             } else if(!pasgrule->protocol) {
-                fprintf(fp,"\t\tPROTOCOL(\"tcp\")\n");
+                fprintf(fp,"        PROTOCOL(\"tcp\")\n");
             }
 
 next_rule:
-            if(print_rule_end_brace) fprintf(fp,"\t}\n");
+            if(print_rule_end_brace) fprintf(fp,"    }\n");
             pasgrule = (ASGRULE *)ellNext(&pasgrule->node);
         }
         pasgmember = (ASGMEMBER *)ellFirst(&pasg->memberList);
         if(!verbose) pasgmember = NULL;
-        if(pasgmember) fprintf(fp,"\tMEMBERLIST\n");
+        if(pasgmember) fprintf(fp,"    MEMBERLIST\n");
         while(pasgmember) {
             if(strlen(pasgmember->asgName)==0)
-                fprintf(fp,"\t\t<null>");
+                fprintf(fp,"        <null>");
             else
-                fprintf(fp,"\t\t%s",pasgmember->asgName);
+                fprintf(fp,"        %s",pasgmember->asgName);
             if(memcallback) memcallback(pasgmember,fp);
             fprintf(fp,"\n");
             pasgclient = (ASGCLIENT *)ellFirst(&pasgmember->clientList);
             while(pasgclient) {
-                fprintf(fp,"\t\t\t %s %s",pasgclient->identity.user,pasgclient->identity.host);
+                fprintf(fp,"             %s %s",pasgclient->identity.user,pasgclient->identity.host);
                 if(pasgclient->level>=0 && pasgclient->level<=1)
                         fprintf(fp," %s",asLevelName[pasgclient->level]);
                 else
@@ -797,7 +805,7 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
         }
         while(pasginp) {
 
-            fprintf(fp,"\tINP%c(%s)",(pasginp->inpIndex + 'A'),pasginp->inp);
+            fprintf(fp,"    INP%c(%s)",(pasginp->inpIndex + 'A'),pasginp->inp);
             if ((pasg->inpBad & (1ul << pasginp->inpIndex)))
                 fprintf(fp," INVALID");
             fprintf(fp," value=%f",pasg->pavalue[pasginp->inpIndex]);
@@ -807,7 +815,7 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
         while(pasgrule) {
             int print_rule_end_brace = FALSE;
             if (pasgrule->ignore) goto next_rule;
-            fprintf(fp,"\tRULE(%d,%s,%s)",
+            fprintf(fp,"    RULE(%d,%s,%s)",
                 pasgrule->level,asAccessName[pasgrule->access],
                 asTrapOption[pasgrule->trapMask]);
             pasguag = (ASGUAG *)ellFirst(&pasgrule->uagList);
@@ -821,20 +829,20 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
                 fprintf(fp,"\n");
                 print_rule_end_brace = FALSE;
             }
-            if(pasguag) fprintf(fp,"\t\tUAG(");
+            if(pasguag) fprintf(fp,"        UAG(");
             while(pasguag) {
                 fprintf(fp,"%s",pasguag->puag->name);
                 pasguag = (ASGUAG *)ellNext(&pasguag->node);
                 if(pasguag) fprintf(fp,","); else fprintf(fp,")\n");
             }
-            if(pasghag) fprintf(fp,"\t\tHAG(");
+            if(pasghag) fprintf(fp,"        HAG(");
             while(pasghag) {
                 fprintf(fp,"%s",pasghag->phag->name);
                 pasghag = (ASGHAG *)ellNext(&pasghag->node);
                 if(pasghag) fprintf(fp,","); else fprintf(fp,")\n");
             }
             if(pasgmethod) {
-                fprintf(fp,"\t\tMETHOD(");
+                fprintf(fp,"        METHOD(");
                 while(pasgmethod) {
                     fprintf(fp,"\"%s\"",pasgmethod->pmethod->name);
                     pasgmethod = (ASGMETHOD *)ellNext(&pasgmethod->node);
@@ -842,7 +850,7 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
                 }
             }
             if(pasgauthority) {
-                fprintf(fp,"\t\tAUTHORITY(");
+                fprintf(fp,"        AUTHORITY(");
                 while(pasgauthority) {
                     fprintf(fp,"%s",pasgauthority->pauthority->name);
                     pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
@@ -850,21 +858,21 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
                 }
             }
             if(pasgrule->calc) {
-                fprintf(fp,"\t\tCALC(\"%s\")",pasgrule->calc);
+                fprintf(fp,"        CALC(\"%s\")",pasgrule->calc);
                 fprintf(fp," result=%s",(pasgrule->result==1 ? "TRUE" : "FALSE"));
                 fprintf(fp,"\n");
             }
             switch (pasgrule->protocol) {
                 case AS_PROTOCOL_TCP:
-                    fprintf(fp,"\t\tPROTOCOL(\"tcp\")\n");
+                    fprintf(fp,"        PROTOCOL(\"tcp\")\n");
                     break;
                 case AS_PROTOCOL_TLS:
-                    fprintf(fp,"\t\tPROTOCOL(\"tls\")\n");
+                    fprintf(fp,"        PROTOCOL(\"tls\")\n");
                     break;
                 default: ;
             }
         next_rule:
-            if(print_rule_end_brace) fprintf(fp,"\t}\n");
+            if(print_rule_end_brace) fprintf(fp,"    }\n");
             pasgrule = (ASGRULE *)ellNext(&pasgrule->node);
         }
         if(print_end_brace) fprintf(fp,"}\n");
@@ -897,18 +905,18 @@ int epicsStdCall asDumpMemFP(FILE *fp,const char *asgname,
         }
         fprintf(fp,"ASG(%s)\n",pasg->name);
         pasgmember = (ASGMEMBER *)ellFirst(&pasg->memberList);
-        if(pasgmember) fprintf(fp,"\tMEMBERLIST\n");
+        if(pasgmember) fprintf(fp,"    MEMBERLIST\n");
         while(pasgmember) {
             if(strlen(pasgmember->asgName)==0)
-                fprintf(fp,"\t\t<null>");
+                fprintf(fp,"        <null>");
             else
-                fprintf(fp,"\t\t%s",pasgmember->asgName);
+                fprintf(fp,"        %s",pasgmember->asgName);
             if(memcallback) memcallback(pasgmember,fp);
             fprintf(fp,"\n");
             pasgclient = (ASGCLIENT *)ellFirst(&pasgmember->clientList);
             if(!clients) pasgclient = NULL;
             while(pasgclient) {
-                fprintf(fp,"\t\t\t %s %s",
+                fprintf(fp,"             %s %s",
                     pasgclient->identity.user,pasgclient->identity.host);
                 if(pasgclient->level>=0 && pasgclient->level<=1)
                     fprintf(fp," %s",asLevelName[pasgclient->level]);

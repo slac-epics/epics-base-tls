@@ -19,10 +19,8 @@
 
 #include <asLib.h>
 
-// The maximum number of links in a chain of authority we will provide in test data.  Increase as needed
 #define MAX_CERT_AUTH_CHAIN_LENGTH 10
 
-// For tests these are the values of the client that are being tested against the given Access Security Group
 static char *asUser,
             *asHost,
             *asMethod,
@@ -40,20 +38,20 @@ static const char hostname_config[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n"
 
     "ASG(rw) {\n"
-    "	RULE(1, WRITE) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(1, WRITE) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -71,42 +69,42 @@ static const char method_auth_config[] = ""
     "UAG(ops) {geek}\n"
 
     "AUTHORITY(AUTH_EPICS_ROOT, \"EPICS Org Root CA\") {\n"
-    "	AUTHORITY(AUTH_INTERMEDIATE_CA, \"Intermediate CA\") {\n"
-    "		AUTHORITY(AUTH_ORNL_CA, \"ORNL Org CA\")\n"
-    "	}\n"
-    "	AUTHORITY(AUTH_UNRELATED_CA, \"Unrelated CA\")\n"
+    "    AUTHORITY(AUTH_INTERMEDIATE_CA, \"Intermediate CA\") {\n"
+    "        AUTHORITY(AUTH_ORNL_CA, \"ORNL Org CA\")\n"
+    "    }\n"
+    "    AUTHORITY(AUTH_UNRELATED_CA, \"Unrelated CA\")\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		UAG(foo,ops)\n"
-    "		METHOD(\"ca\")\n"
-    "		PROTOCOL(\"TCP\")\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        UAG(foo,ops)\n"
+    "        METHOD(\"ca\")\n"
+    "        PROTOCOL(\"TCP\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(rw) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, WRITE, TRAPWRITE) {\n"
-    "		UAG(foo)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_UNRELATED_CA)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, WRITE, TRAPWRITE) {\n"
+    "        UAG(foo)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_UNRELATED_CA)\n"
+    "    }\n"
     "}\n"
 
     "ASG(rwx) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, RPC) {\n"
-    "		UAG(bar)\n"
-    "		METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
-    "		AUTHORITY(AUTH_UNRELATED_CA, AUTH_ORNL_CA)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, RPC) {\n"
+    "        UAG(bar)\n"
+    "        METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
+    "        AUTHORITY(AUTH_UNRELATED_CA, AUTH_ORNL_CA)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -121,41 +119,52 @@ static const char *expected_method_auth_config =
     "UAG(foo) {testing}\n"
     "UAG(ops) {geek}\n"
 
-    "AUTHORITY(AUTH_EPICS_ROOT: EPICS Org Root CA)\n"
-    "AUTHORITY(AUTH_INTERMEDIATE_CA: EPICS Org Root CA -> Intermediate CA)\n"
-    "AUTHORITY(AUTH_ORNL_CA: EPICS Org Root CA -> Intermediate CA -> ORNL Org CA)\n"
-    "AUTHORITY(AUTH_UNRELATED_CA: EPICS Org Root CA -> Unrelated CA)\n"
+    "AUTHORITY(AUTH_EPICS_ROOT, \"EPICS Org Root CA\")\n"
+
+    "AUTHORITY(\"EPICS Org Root CA\") {\n"
+    "    AUTHORITY(AUTH_INTERMEDIATE_CA, \"Intermediate CA\")\n"
+    "}\n"
+
+    "AUTHORITY(\"EPICS Org Root CA\") {\n"
+    "    AUTHORITY(\"Intermediate CA\") {\n"
+    "        AUTHORITY(AUTH_ORNL_CA, \"ORNL Org CA\")\n"
+    "    }\n"
+    "}\n"
+
+    "AUTHORITY(\"EPICS Org Root CA\") {\n"
+    "    AUTHORITY(AUTH_UNRELATED_CA, \"Unrelated CA\")\n"
+    "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
-    "	RULE(1,READ,NOTRAPWRITE) {\n"
-    "		UAG(foo,ops)\n"
-    "		METHOD(\"ca\")\n"
-    "		PROTOCOL(\"tcp\")\n"
-    "	}\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(1,READ,NOTRAPWRITE) {\n"
+    "        UAG(foo,ops)\n"
+    "        METHOD(\"ca\")\n"
+    "        PROTOCOL(\"tcp\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(rw) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
-    "	RULE(1,WRITE,TRAPWRITE) {\n"
-    "		UAG(foo)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_UNRELATED_CA)\n"
-    "	}\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(1,WRITE,TRAPWRITE) {\n"
+    "        UAG(foo)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_UNRELATED_CA)\n"
+    "    }\n"
     "}\n"
 
     "ASG(rwx) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
-    "	RULE(1,RPC,NOTRAPWRITE) {\n"
-    "		UAG(bar)\n"
-    "		METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
-    "		AUTHORITY(AUTH_UNRELATED_CA,AUTH_ORNL_CA)\n"
-    "		PROTOCOL(\"tls\")\n"
-    "	}\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(1,RPC,NOTRAPWRITE) {\n"
+    "        UAG(bar)\n"
+    "        METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
+    "        AUTHORITY(AUTH_UNRELATED_CA,AUTH_ORNL_CA)\n"
+    "        PROTOCOL(\"tls\")\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -167,7 +176,7 @@ static const char *expected_method_auth_config =
  */
 static const char *expected_DEFAULT_rules_config =
     "ASG(DEFAULT) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
     "}\n";
 
 /**
@@ -179,12 +188,12 @@ static const char *expected_DEFAULT_rules_config =
  */
 static const char *expected_ro_rules_config =
     "ASG(ro) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
-    "	RULE(1,READ,NOTRAPWRITE) {\n"
-    "		UAG(foo,ops)\n"
-    "		METHOD(\"ca\")\n"
-    "		PROTOCOL(\"tcp\")\n"
-    "	}\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(1,READ,NOTRAPWRITE) {\n"
+    "        UAG(foo,ops)\n"
+    "        METHOD(\"ca\")\n"
+    "        PROTOCOL(\"tcp\")\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -196,12 +205,12 @@ static const char *expected_ro_rules_config =
  */
 static const char *expected_rw_rules_config =
     "ASG(rw) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
-    "	RULE(1,WRITE,TRAPWRITE) {\n"
-    "		UAG(foo)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_UNRELATED_CA)\n"
-    "	}\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(1,WRITE,TRAPWRITE) {\n"
+    "        UAG(foo)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_UNRELATED_CA)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -213,13 +222,13 @@ static const char *expected_rw_rules_config =
  */
 static const char *expected_rwx_rules_config =
     "ASG(rwx) {\n"
-    "	RULE(0,NONE,NOTRAPWRITE)\n"
-    "	RULE(1,RPC,NOTRAPWRITE) {\n"
-    "		UAG(bar)\n"
-    "		METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
-    "		AUTHORITY(AUTH_UNRELATED_CA,AUTH_ORNL_CA)\n"
-    "		PROTOCOL(\"tls\")\n"
-    "	}\n"
+    "    RULE(0,NONE,NOTRAPWRITE)\n"
+    "    RULE(1,RPC,NOTRAPWRITE) {\n"
+    "        UAG(bar)\n"
+    "        METHOD(\"x509\",\"ignored\",\"ignored_too\")\n"
+    "        AUTHORITY(AUTH_UNRELATED_CA,AUTH_ORNL_CA)\n"
+    "        PROTOCOL(\"tls\")\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -282,19 +291,19 @@ static const char *expected_rwx_rules_config =
 static const char chained_auth_config[] = ""
     // Authority chain containing SNS and HIFR Certificate Authorities
     "AUTHORITY(AUTH_ORNL_ROOT, \"ORNL Root CA\") {\n"
-    "	AUTHORITY(\"SNS Intermediate CA\") {\n"
-    "		AUTHORITY(AUTH_SNS_CTRL, \"SNS Control Systems CA\")\n"
-    "		AUTHORITY(AUTH_BEAMLINE, \"SNS Beamline Operations CA\")\n"
+    "    AUTHORITY(\"SNS Intermediate CA\") {\n"
+    "        AUTHORITY(AUTH_SNS_CTRL, \"SNS Control Systems CA\")\n"
+    "        AUTHORITY(AUTH_BEAMLINE, \"SNS Beamline Operations CA\")\n"
     "   }\n"
-    "	AUTHORITY(\"HFIR Intermediate CA\") {\n"
-    "		AUTHORITY(AUTH_HIFR_CTRL, \"HFIR Control Systems CA\")\n"
-    "		AUTHORITY(AUTH_HIFR_SAMPLE, \"HFIR Sample Environment CA\")\n"
+    "    AUTHORITY(\"HFIR Intermediate CA\") {\n"
+    "        AUTHORITY(AUTH_HIFR_CTRL, \"HFIR Control Systems CA\")\n"
+    "        AUTHORITY(AUTH_HIFR_SAMPLE, \"HFIR Sample Environment CA\")\n"
     "   }\n"
     "}\n"
 
     // Authority chain containing ORNL IT User Certificate Authorities
     "AUTHORITY(AUTH_ORNL_IT_ROOT, \"ORNL IT Root CA\") {\n"
-    "	AUTHORITY(AUTH_ORNL_USERS, \"ORNL User Certificate Authority\")\n"
+    "    AUTHORITY(AUTH_ORNL_USERS, \"ORNL User Certificate Authority\")\n"
     "}\n"
 
     "UAG(ORNL:ADMINS) {s.streiffer}\n"
@@ -323,145 +332,145 @@ static const char chained_auth_config[] = ""
     "GROUP(PHYSICS_GROUP) {physics}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(PHYSICS) {\n"
     // ORNL Physics Users: To try out GROUPS syntax: ignored due to future proofing
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		GROUP(PHYSICS_GROUP)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        GROUP(PHYSICS_GROUP)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(ADMIN) {\n"
     // ORNL Admin Users
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(ORNL:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        UAG(ORNL:ADMINS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(SNS:ADMIN) {\n"
     // SNS Admin Users
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(SNS:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        UAG(SNS:ADMINS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(SNS:CTRL:ADMIN) {\n"
     // SNS Controls Admin Users
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(SNS:CTRL:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        UAG(SNS:CTRL:ADMINS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(SNS:CONTROLS) {\n"
     // SNS Controls Users
-    "	RULE(0, READ) {\n"
-    "		UAG(SNS:CTRL:USERS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, READ) {\n"
+    "        UAG(SNS:CTRL:USERS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     // SNS Controls Operators and Devices
-    "	RULE(1, WRITE, TRAPWRITE) {\n"
-    "		UAG(SNS:CTRL:OPS, SNS:CTRL:DEVICES)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS, AUTH_SNS_CTRL)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(1, WRITE, TRAPWRITE) {\n"
+    "        UAG(SNS:CTRL:OPS, SNS:CTRL:DEVICES)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS, AUTH_SNS_CTRL)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(SNS:BEAMLINE) {\n"
     // SNS Beamline Users
-    "	RULE(0, READ) {\n"
-    "		UAG(SNS:BEAM:USERS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, READ) {\n"
+    "        UAG(SNS:BEAM:USERS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     // SNS Beamline Operators and Devices
-    "	RULE(1, WRITE, TRAPWRITE) {\n"
-    "		UAG(SNS:BEAM:OPS, SNS:BEAM:DEVICES)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS, AUTH_BEAMLINE)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(1, WRITE, TRAPWRITE) {\n"
+    "        UAG(SNS:BEAM:OPS, SNS:BEAM:DEVICES)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS, AUTH_BEAMLINE)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(HFIR:ADMIN) {\n"
     // HIFR Admin Users
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(HFIR:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        UAG(HFIR:ADMINS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_IT_ROOT)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(HFIR:CTRL:ADMIN) {\n"
     // HIFR Controls Admin Users
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(HFIR:CTRL:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        UAG(HFIR:CTRL:ADMINS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(HFIR:CONTROLS) {\n"
     // HIFR Controls Users
-    "	RULE(0, READ) {\n"
-    "		UAG(HFIR:CTRL:USERS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, READ) {\n"
+    "        UAG(HFIR:CTRL:USERS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     // HIFR Controls Operators and Devices
-    "	RULE(1, WRITE, TRAPWRITE) {\n"
-    "		UAG(HFIR:CTRL:OPS, HFIR:CTRL:DEVICES)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_HIFR_CTRL,AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(1, WRITE, TRAPWRITE) {\n"
+    "        UAG(HFIR:CTRL:OPS, HFIR:CTRL:DEVICES)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_HIFR_CTRL,AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(HFIR:ENV:ADMIN) {\n"
     // HIFR Sample Environment Admin Users
-    "	RULE(0, WRITE, TRAPWRITE) {\n"
-    "		UAG(HFIR:ENV:ADMINS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(0, WRITE, TRAPWRITE) {\n"
+    "        UAG(HFIR:ENV:ADMINS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n"
 
     "ASG(HFIR:ENVIRONMENT) {\n"
-    "	RULE(0, READ) {\n"
+    "    RULE(0, READ) {\n"
     // HIFR Sample Environment Users
-    "		UAG(HFIR:ENV:USERS)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "        UAG(HFIR:ENV:USERS)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     // HIFR Sample Environment Operators and Devices
-    "	RULE(1, WRITE, TRAPWRITE) {\n"
-    "		UAG(HFIR:ENV:OPS, HFIR:ENV:DEVICES)\n"
-    "		METHOD(\"x509\")\n"
-    "		AUTHORITY(AUTH_HIFR_SAMPLE,AUTH_ORNL_USERS)\n"
-    "		PROTOCOL(\"TLS\")\n"
-    "	}\n"
+    "    RULE(1, WRITE, TRAPWRITE) {\n"
+    "        UAG(HFIR:ENV:OPS, HFIR:ENV:DEVICES)\n"
+    "        METHOD(\"x509\")\n"
+    "        AUTHORITY(AUTH_HIFR_SAMPLE,AUTH_ORNL_USERS)\n"
+    "        PROTOCOL(\"TLS\")\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -477,14 +486,14 @@ static const char supported_config_1[] = ""
     "GENERIC(WELL, FORMED, ARG, LIST)\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -498,18 +507,18 @@ static const char supported_config_2[] = ""
     "HAG(foo) {localhost}\n"
 
     "SIMPLE(WELL, FORMED, ARG, LIST) {\n"
-    "	WELL, FORMED, LIST\n"
+    "    WELL, FORMED, LIST\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -524,19 +533,19 @@ static const char supported_config_3[] = ""
     "HAG(foo) {localhost}\n"
 
     "COMPLEX_ARGUMENTS(1, WELL, \"FORMED\", ARG, LIST) {\n"
-    "	ALSO_GENERIC(WELL, FORMED, ARG, LIST, 2.0) \n"
-    "	RULE(WELL, FORMED, ARG, LIST, 2.0) \n"
+    "    ALSO_GENERIC(WELL, FORMED, ARG, LIST, 2.0) \n"
+    "    RULE(WELL, FORMED, ARG, LIST, 2.0) \n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -548,27 +557,27 @@ static const char supported_config_3[] = ""
  * - includes floating point numbers, and an empty arg list
  */
 static const char supported_config_4[] = ""
-    "HAG(foo) {localhost}\n"
+"HAG(foo) {localhost}\n"
 
-    "SUB_BLOCKS(1.0, ARGS) {\n"
-    "	ALSO_GENERIC() {\n"
-    "		AND_LIST_BODY\n"
-    "	}\n"
-    "	ANOTHER_GENERIC() {\n"
-    "		BIGGER, LIST, BODY\n"
-    "	}\n"
-    "}\n"
+"SUB_BLOCKS(1.0, ARGS) {\n"
+"    ALSO_GENERIC() {\n"
+"        AND_LIST_BODY\n"
+"    }\n"
+"    RULE() {\n"
+"        BIGGER, LIST, BODY\n"
+"    }\n"
+"}\n"
 
-    "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
-    "}\n"
+"ASG(DEFAULT) {\n"
+"    RULE(0, NONE)\n"
+"}\n"
 
-    "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
-    "}\n";
+"ASG(ro) {\n"
+"    RULE(0, NONE)\n"
+"    RULE(1, READ) {\n"
+"        HAG(foo)\n"
+"    }\n"
+"}\n";
 
 /**
  * Test data with unsupported elements.
@@ -582,22 +591,22 @@ static const char supported_config_5[] = ""
     "HAG(foo) {localhost}\n"
 
     "RECURSIVE_SUB_BLOCKS(1.0, -2.3, +4.5, ARGS, +2.71828E-23, -2.71828e+23, +12, -13, +-14) {\n"
-    "	ALSO_GENERIC() {\n"
-    "		AND_RECURSIVE(FOO) {\n"
-    "			LIST, BODY\n"
-    "		}\n"
-    "	}\n"
+    "    ALSO_GENERIC() {\n"
+    "        AND_RECURSIVE(FOO) {\n"
+    "            LIST, BODY\n"
+    "        }\n"
+    "    }\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(+1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(+1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -612,31 +621,31 @@ static const char supported_config_6[] = ""
     "HAG(foo) {localhost}\n"
 
     "WITH_KEYWORDS(UAG) {\n"
-    "	ASG(HAL, IMP, CALC, RULE)\n"
-    "	HAL(USG, METHOD) {\n"
-    "		PROTOCOL(\"TLS\", AUTHORITY)\n"
-    "	}\n"
+    "    ASG(HAL, IMP, CALC, RULE)\n"
+    "    HAL(USG, MAL) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ignored) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		WITH_KEYWORDS(UAG)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        WITH_KEYWORDS(UAG)\n"
+    "    }\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
-    "	RULE(2, WRITE) {\n"
-    "		WITH_KEYWORDS(UAG)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
+    "    RULE(2, WRITE) {\n"
+    "        WITH_KEYWORDS(UAG)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -650,16 +659,16 @@ static const char supported_config_7[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "		BAD_PREDICATE(\"x509\")\n"
-    "		BAD_PREDICATE_AS_WELL(\"EPICS Certificate Authority\")\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "        BAD_PREDICATE(\"x509\")\n"
+    "        BAD_PREDICATE_AS_WELL(\"EPICS Certificate Authority\")\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -670,19 +679,19 @@ static const char supported_config_7[] = ""
  * - unexpected permission name in arg list for RULE element ignored
  */
 static const char supported_config_8[] = ""
-    "HAG(foo) {localhost}\n"
+        "HAG(foo) {localhost}\n"
 
-    "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
-    "}\n"
+        "ASG(DEFAULT) {\n"
+        "    RULE(0, NONE)\n"
+        "}\n"
 
-    "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, ADDITIONAL_PERMISSION) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
-    "}\n"
-    ;
+        "ASG(ro) {\n"
+        "    RULE(0, NONE)\n"
+        "    RULE(1, ADDITIONAL_PERMISSION) {\n"
+        "        HAG(foo)\n"
+        "    }\n"
+        "}\n"
+        ;
 
 /**
  * Test data with unsupported elements.
@@ -695,15 +704,15 @@ static const char supported_config_9[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, WRITE) {\n"
-    "		HAG(foo)\n"
-    "		PROTOCOL(UNKNOWN_PROTOCOL)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, WRITE) {\n"
+    "        HAG(foo)\n"
+    "        PROTOCOL(UNKNOWN_PROTOCOL)\n"
+    "    }\n"
     "}\n"
     ;
 
@@ -720,14 +729,14 @@ static const char unsupported_config_1[] = ""
     "GENERIC(not well-formed arg list)\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -741,18 +750,18 @@ static const char unsupported_config_2[] = ""
     "HAG(foo) {localhost}\n"
 
     "GENERIC(WELL, FORMED, ARG, LIST) {\n"
-    "	NOT WELL-FORMED BODY\n"
+    "    NOT WELL-FORMED BODY\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -766,18 +775,18 @@ static const char unsupported_config_3[] = ""
     "HAG(foo) {localhost}\n"
 
     "GENERIC {\n"
-    "	WELL, FORMED, LIST, BODY\n"
+    "    WELL, FORMED, LIST, BODY\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -791,18 +800,18 @@ static const char unsupported_config_4[] = ""
     "HAG(foo) {localhost}\n"
 
     "GENERIC(WELL, FORMED, ARG, LIST) {\n"
-    "	BODY(BAD ARG LIST)\n"
+    "    BODY(BAD ARG LIST)\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -816,19 +825,19 @@ static const char unsupported_config_5[] = ""
     "HAG(foo) {localhost}\n"
 
     "GENERIC(WELL, FORMED, ARG, LIST) {\n"
-    "	LIST, BODY, MIXED, WITH,\n"
-    "	RECURSIVE_BODY(ARG, LIST)\n"
+    "    LIST, BODY, MIXED, WITH,\n"
+    "    RECURSIVE_BODY(ARG, LIST)\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -840,14 +849,14 @@ static const char unsupported_mod_1[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro BAD ARG LIST) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -859,14 +868,14 @@ static const char unsupported_mod_2[] = ""
     "HAG(BAD ARG LIST) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -878,14 +887,14 @@ static const char unsupported_mod_3[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0 BAD ARG LIST)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0 BAD ARG LIST)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -897,14 +906,14 @@ static const char unsupported_mod_4[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro, UNKNOWN_PERMISSION) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -916,14 +925,14 @@ static const char unsupported_mod_5[] = ""
     "HAG(foo) {localhost}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE, UNKNOWN_FLAG)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE, UNKNOWN_FLAG)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -933,19 +942,19 @@ static const char unsupported_mod_5[] = ""
  */
 static const char unsupported_mod_6[] = ""
     "HAG(foo) {\n"
-    "	localhost,\n"
-    "	NETWORK(\"127.0.0.1\")\n"
+    "    localhost,\n"
+    "    NETWORK(\"127.0.0.1\")\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -955,19 +964,19 @@ static const char unsupported_mod_6[] = ""
  */
 static const char unsupported_mod_7[] = ""
     "UAG(foo) {\n"
-    "	alice,\n"
-    "	GROUP(admin)\n"
+    "    alice,\n"
+    "    GROUP(admin)\n"
     "}\n"
 
     "ASG(DEFAULT) {\n"
-    "	RULE(0, NONE)\n"
+    "    RULE(0, NONE)\n"
     "}\n"
 
     "ASG(ro) {\n"
-    "	RULE(0, NONE)\n"
-    "	RULE(1, READ) {\n"
-    "		HAG(foo)\n"
-    "	}\n"
+    "    RULE(0, NONE)\n"
+    "    RULE(1, READ) {\n"
+    "        HAG(foo)\n"
+    "    }\n"
     "}\n";
 
 /**
@@ -1011,7 +1020,7 @@ static void setProtocol(enum AsProtocol the_protocol)
  * @details
  * This function takes the global variable `asAuthority`, which contains a newline-delimited
  * list of certificate authorities ordered from signer to signee (i.e., root CA first,
- * issuer CA last), and converts it into a single-line, human-readable string
+ * issuer CA last), and converts it into a nested definition block as
  *
  * The resulting format resembles:
  *   "Root Certificate Authority -> Intermediate CA -> Issuer CA"
@@ -1032,25 +1041,39 @@ static void parseCertAuthChain(char *parsedCertAuthChainBuf) {
         char unParsedAuthority[MAX_AUTH_CHAIN_STRING];
         strncpy(unParsedAuthority, asAuthority, sizeof(unParsedAuthority));
         unParsedAuthority[sizeof(unParsedAuthority) - 1] = '\0';
-
         const char *token = strtok(unParsedAuthority, "\n");
         if (token) {
-            size_t len = 0;
+            const char *AUTHORITY_KEYWORD = "AUTHORITY";
+            const size_t AUTHORITY_KEYWORD_LEN=strlen(AUTHORITY_KEYWORD);
+            const size_t ENCLOSING_PARENS=2;
+            const size_t ENCLOSING_QUOTES=2;
             size_t remainingSpace = MAX_AUTH_CHAIN_STRING;
-            len = strlen(token);
-            if (len < remainingSpace) {
-                strcpy(p, token);
-                p += len;
-                remainingSpace -= len;
+            size_t len = strlen(token);
+            size_t size = AUTHORITY_KEYWORD_LEN + ENCLOSING_PARENS + ENCLOSING_QUOTES + len;
+;
+            if (size < remainingSpace) {
+                const size_t NEWLINE=1;
+                const size_t SPACE=1;
+                int indent = 4;
+                sprintf(p, "%s(\"%s\")", AUTHORITY_KEYWORD, token);
+                p += size; remainingSpace -= size;
 
-                while (((token = strtok(NULL, "\n"))) && remainingSpace > 4) {
+                while (((token = strtok(NULL, "\n"))) && remainingSpace > 1) {
                     len = strlen(token);
-                    if (len + 4 < remainingSpace) {
-                        strcpy(p, " -> ");
-                        p += 4;
-                        strcpy(p, token);
-                        p += len;
-                        remainingSpace -= (len + 4);
+                    size = SPACE + NEWLINE + indent + 1 + AUTHORITY_KEYWORD_LEN + ENCLOSING_PARENS + ENCLOSING_QUOTES + len;
+                    if (size < remainingSpace) {
+                        sprintf(p, " {\n%*s%s(\"%s\")", indent, "", AUTHORITY_KEYWORD, token);
+                        p += size; remainingSpace -= size;
+                        indent+=4;
+                    } else {
+                        break;
+                    }
+                }
+                for ( indent -= 8; indent >= 0 ; indent -= 4) {
+                    size = NEWLINE + indent + 1;
+                    if (size < remainingSpace) {
+                        sprintf(p, "\n%*s}", indent, "");
+                        p += size; remainingSpace -= size;
                     } else {
                         break;
                     }
@@ -1070,27 +1093,28 @@ static void testAccess(const char *asg, unsigned mask)
 {
     ASMEMBERPVT asp = 0; /* aka dbCommon::asp */
     ASCLIENTPVT client = 0;
+    long ret;
 
     static __thread char formattedCertAuthChain[MAX_AUTH_CHAIN_STRING];
     parseCertAuthChain(&formattedCertAuthChain[0]);
 
-    long ret = asAddMember(&asp, asg);
+    ret = asAddMember(&asp, asg);
     if(ret) {
-        testFail("testAccess(ASG:%s, ID:%s, METHOD:%s, AUTHORITY:%s, HOST:%s, PROTOCOL:%s, ASL:%d) -> asAddMember error: %s",
-                 asg, asUser, asMethod?asMethod:"", asAuthority?formattedCertAuthChain:"", asHost, protocol ? "true":"false", asAsl, errSymMsg(ret));
+        testFail("testAccess(ASG:%s, USER:%s, HOST:%s, ASL:%d, METHOD:%s, AUTHORITY:%s, PROTOCOL:%s) -> asAddMember error: %s",
+                 asg, asUser, asHost, asAsl, asMethod?asMethod:"", asAuthority?formattedCertAuthChain:"", protocol ? "true":"false", errSymMsg(ret));
     } else {
         ret = asAddClientIdentity(&client, asp, asAsl, (ASIDENTITY){ .user = asUser, .host = asHost, .method = asMethod, .authority = asAuthority, .protocol = protocol });
     }
     if(ret) {
-        testFail("testAccess(ASG:%s, ID:%s, METHOD:%s, AUTHORITY:%s, HOST:%s, PROTOCOL:%s, ASL:%d) -> asAddClient error: %s",
-                 asg, asUser, asMethod?asMethod:"", asAuthority?formattedCertAuthChain:"", asHost, protocol ? "true":"false", asAsl, errSymMsg(ret));
+        testFail("testAccess(ASG:%s, USER:%s, HOST:%s, ASL:%d, METHOD:%s, AUTHORITY:%s, PROTOCOL:%s) -> asAddClient error: %s",
+                 asg, asUser, asHost, asAsl, asMethod?asMethod:"", asAuthority?formattedCertAuthChain:"", protocol ? "true":"false", errSymMsg(ret));
     } else {
         unsigned actual = 0;
         actual |= asCheckGet(client) ? 1 : 0;
         actual |= asCheckPut(client) ? 2 : 0;
         actual |= asCheckRPC(client) ? 4 : 0;
-        testOk(actual==mask, "testAccess(ASG:%s, ID:%s, METHOD:%s, AUTHORITY:%s, HOST:%s, PROTOCOL:%s, ASL:%d) -> %x == %x",
-               asg, asUser, asMethod?asMethod:"", asAuthority?formattedCertAuthChain:"", asHost, protocol ? "true":"false", asAsl, actual, mask);
+        testOk(actual==mask, "testAccess(ASG:%s, USER:%s, HOST:%s, ASL:%d, METHOD:%s, AUTHORITY:%s, PROTOCOL:%s) -> %x == %x",
+               asg, asUser, asHost, asAsl, asMethod?asMethod:"", asAuthority?formattedCertAuthChain:"", protocol ? "true":"false", actual, mask);
     }
     if(client) asRemoveClient(&client);
     if(asp) asRemoveMember(&asp);
