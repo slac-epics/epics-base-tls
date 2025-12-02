@@ -58,7 +58,7 @@ typedef struct asTrapWritePvt
 }asTrapWritePvt;
 
 static asTrapWritePvt *pasTrapWritePvt = 0;
-
+
 static void asTrapWriteInit(void)
 {
     pasTrapWritePvt = callocMustSucceed(1,sizeof(asTrapWritePvt),"asTrapWriteInit");
@@ -110,7 +110,7 @@ void epicsStdCall asTrapWriteUnregisterListener(asTrapWriteId id)
     free(plistener);
     epicsMutexUnlock(pasTrapWritePvt->lock);
 }
-
+
 void * epicsStdCall asTrapWriteBeforeWithData(
     const char *userid, const char *hostid, dbChannel *chan,
     int dbrType, int no_elements, void *data)
