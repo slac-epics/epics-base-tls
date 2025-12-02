@@ -306,26 +306,26 @@ static const char chained_auth_config[] = ""
     "    AUTHORITY(AUTH_ORNL_USERS, \"ORNL User Certificate Authority\")\n"
     "}\n"
 
-    "UAG(ORNL:ADMINS) {s.streiffer}\n"
+    "UAG(ORNL:ADMINS) {s.simmons}\n"
 
-    "UAG(SNS:ADMINS) {s.streiffer}\n"
-    "UAG(SNS:CTRL:ADMINS) {v.fanelli}\n"
-    "UAG(SNS:CTRL:OPS) {v.fanelli, ann.op}\n"
-    "UAG(SNS:CTRL:USERS) {v.fanelli, w.blower, x.windman, y.gale}\n"
+    "UAG(SNS:ADMINS) {s.simmons}\n"
+    "UAG(SNS:CTRL:ADMINS) {v.valero}\n"
+    "UAG(SNS:CTRL:OPS) {v.valero, ann.op}\n"
+    "UAG(SNS:CTRL:USERS) {v.valero, w.wilson, x.xavior, y.york}\n"
     "UAG(SNS:CTRL:DEVICES) {SNS:CTRL:IOC:VAC01, SNS:CTRL:IOC:MOT02, SNS:CTRL:IOC:TEMP03, SNS:CTRL:IOC:PWR04}\n"
-    "UAG(SNS:BEAM:ADMINS) {f.pilat}\n"
-    "UAG(SNS:BEAM:OPS) {f.pilat, bee.op}\n"
-    "UAG(SNS:BEAM:USERS) {f.pilat, g.squat, h.lunge, i.press}\n"
+    "UAG(SNS:BEAM:ADMINS) {f.foreman}\n"
+    "UAG(SNS:BEAM:OPS) {f.foreman, bee.op}\n"
+    "UAG(SNS:BEAM:USERS) {f.foreman, g.squat, h.lunge, i.press}\n"
     "UAG(SNS:BEAM:DEVICES) {SNS:BEAM:IOC:DET01, SNS:BEAM:IOC:COLL02, SNS:BEAM:IOC:CHOP03, SNS:BEAM:IOC:MON04}\n"
 
-    "UAG(HFIR:ADMINS) {s.streiffer}\n"
-    "UAG(HFIR:CTRL:ADMINS) {b.weston}\n"
-    "UAG(HFIR:CTRL:OPS) {b.weston, cee.op}\n"
-    "UAG(HFIR:CTRL:USERS) {b.weston, c.north, d.southerly, e.eastman}\n"
+    "UAG(HFIR:ADMINS) {s.simmons}\n"
+    "UAG(HFIR:CTRL:ADMINS) {b.bossman}\n"
+    "UAG(HFIR:CTRL:OPS) {b.bossman, cee.op}\n"
+    "UAG(HFIR:CTRL:USERS) {b.bossman, c.north, d.southerly, e.eastman}\n"
     "UAG(HFIR:CTRL:DEVICES) {HFIR:CTRL:IOC:REACT01, HFIR:CTRL:IOC:COOL02, HFIR:CTRL:IOC:SHLD03}\n"
-    "UAG(HFIR:ENV:ADMINS) {g.lynn}\n"
-    "UAG(HFIR:ENV:OPS) {g.lynn, dee.op}\n"
-    "UAG(HFIR:ENV:USERS) {g.lynn, h.overman, i.bachman}\n"
+    "UAG(HFIR:ENV:ADMINS) {g.glen}\n"
+    "UAG(HFIR:ENV:OPS) {g.glen, dee.op}\n"
+    "UAG(HFIR:ENV:USERS) {g.glen, h.overman, i.bachman}\n"
     "UAG(HFIR:ENV:DEVICES) {HFIR:ENV:IOC:TEMP01, HFIR:ENV:IOC:MAG02}\n"
 
     // Try out GROUP syntax: will be ignored by future proofing functionality
@@ -1420,13 +1420,13 @@ static void testMethodAndAuth(void)
  * This test data models a fictional lab (ORNL), its light sources, and associated operational groups.
  *
  * Organizational Structure:
- *   ORNL Lab - Stephen Streiffer: Laboratory Director
+ *   ORNL Lab - Stephen simmons: Laboratory Director
  *   --> Spallation Neutron Source (SNS)
- *       --> SNS Control Systems - Victor Fanelli: Group Leader
- *       --> SNS Beamline Operations - Fulvia Pilat: Director of Research
+ *       --> SNS Control Systems - Victor valero: Group Leader
+ *       --> SNS Beamline Operations - Fulvia foreman: Director of Research
  *   --> High Flux Isotope Reactor (HFIR)
- *       --> HFIR Control Systems - Brian Weston: Chief Operating Officer
- *       --> HFIR Sample Environment - Gary Lynn: Section Head
+ *       --> HFIR Control Systems - Brian bossman: Chief Operating Officer
+ *       --> HFIR Sample Environment - Gary glen: Section Head
  *
  * Certificate Authorities and certificates they manage:
  *   ORNL Root CA
@@ -1456,7 +1456,7 @@ static void testCertificateChains(void) {
     setProtocol(AS_PROTOCOL_TLS);
 
     // Laboratory Directorate and global admin
-    setUser("s.streiffer");
+    setUser("s.simmons");
     setAuthority(
         "ORNL IT Root CA\n"
         "ORNL User Certificate Authority"
@@ -1467,18 +1467,18 @@ static void testCertificateChains(void) {
     testAccess("SNS:ADMIN", 3);
 
     // Spallation Neutron Source Controls Group
-    setUser("v.fanelli");
+    setUser("v.valero");
     testAccess("SNS:ADMIN", 0);
     testAccess("SNS:CTRL:ADMIN", 3);
     testAccess("SNS:CONTROLS", 3);
     setUser("ann.op");
     testAccess("SNS:CONTROLS", 3);
 
-    setUser("w.blower");
+    setUser("w.wilson");
     testAccess("SNS:CONTROLS", 1);
-    setUser("x.windman");
+    setUser("x.xavior");
     testAccess("SNS:CONTROLS", 1);
-    setUser("y.gale");
+    setUser("y.york");
     testAccess("SNS:CONTROLS", 1);
     setUser("g.squat");   // Wrong Group
     testAccess("SNS:CONTROLS", 0);
@@ -1488,7 +1488,7 @@ static void testCertificateChains(void) {
     testAccess("SNS:CONTROLS", 0);
 
     // Spallation Neutron Source beamline operations
-    setUser("f.pilat");
+    setUser("f.foreman");
     testAccess("SNS:ADMIN", 0);
     testAccess("SNS:BEAM:ADMIN", 0);  // No such security group
     testAccess("SNS:BEAMLINE", 3);
@@ -1501,11 +1501,11 @@ static void testCertificateChains(void) {
     testAccess("SNS:BEAMLINE", 1);
     setUser("i.press");
     testAccess("SNS:BEAMLINE", 1);
-    setUser("w.blower");  // Wrong Group
+    setUser("w.wilson");  // Wrong Group
     testAccess("SNS:BEAMLINE", 0);
-    setUser("x.windman"); // Wrong Group
+    setUser("x.xavior"); // Wrong Group
     testAccess("SNS:BEAMLINE", 0);
-    setUser("y.gale");    // Wrong Group
+    setUser("y.york");    // Wrong Group
     testAccess("SNS:BEAMLINE", 0);
 
     // Spallation Neutron Source Devices
@@ -1553,7 +1553,7 @@ static void testCertificateChains(void) {
     testAccess("SNS:BEAMLINE", 3);
 
     // High-Flux Isotope Reactor
-    setUser("s.streiffer");
+    setUser("s.simmons");
     setAuthority(
         "ORNL IT Root CA\n"
         "ORNL User Certificate Authority"
@@ -1561,7 +1561,7 @@ static void testCertificateChains(void) {
     testAccess("HFIR:ADMIN", 3);
 
     // High-Flux Isotope Reactor Controls Group
-    setUser("b.weston");
+    setUser("b.bossman");
     testAccess("HFIR:ADMIN", 0);
     testAccess("HFIR:CTRL:ADMIN", 3);
     testAccess("HFIR:CONTROLS", 3);
@@ -1574,7 +1574,7 @@ static void testCertificateChains(void) {
     testAccess("HFIR:CONTROLS", 1);
     setUser("e.eastman");
     testAccess("HFIR:CONTROLS", 1);
-    setUser("g.lynn");   // Wrong Group
+    setUser("g.glen");   // Wrong Group
     testAccess("HFIR:CONTROLS", 0);
     setUser("h.overman");   // Wrong Group
     testAccess("HFIR:CONTROLS", 0);
@@ -1582,7 +1582,7 @@ static void testCertificateChains(void) {
     testAccess("HFIR:CONTROLS", 0);
 
     // High-Flux Isotope Reactor Sample Environment operations
-    setUser("g.lynn");
+    setUser("g.glen");
     testAccess("HFIR:ADMIN", 0);
     testAccess("HFIR:ENV:ADMIN", 3);
     testAccess("HFIR:ENVIRONMENT", 3);
@@ -1593,7 +1593,7 @@ static void testCertificateChains(void) {
     testAccess("HFIR:ENVIRONMENT", 1);
     setUser("i.bachman");
     testAccess("HFIR:ENVIRONMENT", 1);
-    setUser("f.pilat");  // Wrong Group
+    setUser("f.foreman");  // Wrong Group
     testAccess("HFIR:ENVIRONMENT", 0);
     setUser("g.squat");  // Wrong Group
     testAccess("HFIR:ENVIRONMENT", 0);
