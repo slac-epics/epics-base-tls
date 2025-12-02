@@ -59,8 +59,6 @@ static UAG *asUagAdd(const char *uagName);
 static long asUagAddUser(UAG *puag,const char *user);
 static HAG *asHagAdd(const char *hagName);
 static long asHagAddHost(HAG *phag,const char *host);
-static AUTHCHAIN *asAddAuthority(const char *name, const char *chain);
-static const char *asGetAuthority(const char *name);
 static ASG *asAsgAdd(const char *asgName);
 static long asAsgAddInp(ASG *pasg,const char *inp,int inpIndex);
 static ASGRULE *asAsgAddRule(ASG *pasg,asAccessRights access,int level);
@@ -68,26 +66,14 @@ static long asAsgAddRuleOptions(ASGRULE *pasgrule,int trapMask);
 static long asAsgRuleUagAdd(ASGRULE *pasgrule,const char *name);
 static long asAsgRuleHagAdd(ASGRULE *pasgrule,const char *name);
 static long asAsgRuleCalc(ASGRULE *pasgrule,const char *calc);
+static AUTHCHAIN *asAddAuthority(const char *name, const char *chain);
+static const char *asGetAuthority(const char *name);
 static long asAsgRuleDisable(ASGRULE *pasgrule);
 static long asAsgRuleDisable(ASGRULE *pasgrule);
 static long asAsgRuleMethodAdd(ASGRULE *pasgrule, const char *name);
 static long asAsgRuleAuthorityAdd(ASGRULE *pasgrule, const char *name);
 static long asAsgAddProtocolAdd(ASGRULE *pasgrule,enum AsProtocol protocol);
 
-/**
- * @brief Initialize the Access Security
- * This can be called while access security is already active.
- * This is accomplished by doing the following:
- *  - The version pointed to by pasbase is kept as is but locked against changes
- *  - A new version is created and pointed to by pasbasenew
- *  - If anything goes wrong. The original version is kept. This results is some
- *    wasted space but at least things still work.
- *  - If the new access security configuration is successfully read then:
- *    * the old memberList is moved from old to new.
- *    * the old structures are freed.
- *
- * @param arg Argument (not used)
- */
 static void asInitializeOnce(void *arg)
 {
     osiSockAttach();
@@ -370,24 +356,6 @@ void epicsStdCall asPutMemberPvt(ASMEMBERPVT asMemberPvt,void *userPvt)
     pasgmember->userPvt = userPvt;
 }
 
-/**
- * @brief Add a client to an existing ASG
- * This function adds a client to an existing ASG.
- * A client is defined by a user, method, authority, and host all of which can
- * be NULL.
- * It is the responsibility of the caller to free the client structure when it is no longer needed.
- *
- * @param pasClientPvt Pointer to the client structure
- * @param asMemberPvt Pointer to the member structure
- * @param asl Access level
- * @param user User name
- * @param host Host name
- * @return Status code
- *          `S_asLib_asNotActive` if access security is not active,
- *          `S_asLib_badMember` if the member is not provided,
- *          `S_asLib_noMemory` if there is not enough memory to allocate the client structure,
- *          or the status from `asComputePvt` which will be 0 if the client is successfully added
- */
 long epicsStdCall asAddClient(ASCLIENTPVT *pasClientPvt,ASMEMBERPVT asMemberPvt,
         int asl,const char *user,char *host) {
 
@@ -395,23 +363,6 @@ long epicsStdCall asAddClient(ASCLIENTPVT *pasClientPvt,ASMEMBERPVT asMemberPvt,
         (ASIDENTITY){ .user = user, .host = host, .method = "ca"  });
 }
 
-/**
- * @brief Add a client to an existing ASG
- * This function adds a client to an existing ASG.
- * A client is defined by a user, method, authority, and host all of which can
- * be NULL.
- * It is the responsibility of the caller to free the client structure when it is no longer needed.
- *
- * @param pasClientPvt Pointer to the client structure
- * @param asMemberPvt Pointer to the member structure
- * @param asl Access level
- * @param identity identity of the client
- * @return Status code
- *          `S_asLib_asNotActive` if access security is not active,
- *          `S_asLib_badMember` if the member is not provided,
- *          `S_asLib_noMemory` if there is not enough memory to allocate the client structure,
- *          or the status from `asComputePvt` which will be 0 if the client is successfully added
- */
 long epicsStdCall asAddClientIdentity(ASCLIENTPVT *pasClientPvt,ASMEMBERPVT asMemberPvt, int asl, ASIDENTITY identity) {
     ASGMEMBER   *pasgmember = asMemberPvt;
     ASGCLIENT   *pasgclient;
@@ -439,26 +390,11 @@ long epicsStdCall asAddClientIdentity(ASCLIENTPVT *pasClientPvt,ASMEMBERPVT asMe
     return(status);
 }
 
-/**
- * @brief Change a client's attributes
- * @param asClientPvt Pointer to the client structure
- * @param asl Access level
- * @param user User name
- * @param host Host name
- * @return Status code
- */
 long epicsStdCall asChangeClient(
     ASCLIENTPVT asClientPvt,int asl,const char *user,char *host) {
     return asChangeClientIdentity(asClientPvt, asl,(ASIDENTITY){ .user = user, .host = host, .method = "ca" });
 }
 
-/**
- * @brief Change a client's attributes
- * @param asClientPvt Pointer to the client structure
- * @param asl Access level
- * @param identity identity of the client
- * @return Status code
- */
 long epicsStdCall asChangeClientIdentity(
     ASCLIENTPVT asClientPvt,int asl, ASIDENTITY identity)
 {
@@ -580,18 +516,6 @@ int epicsStdCall asDump(
     return asDumpFP(stdout,memcallback,clientcallback,verbose);
 }
 
-/**
- * @brief Dump the ASG to a file
- * This function dumps the ASG to a normalized ACF file.
- * It calls the member callback for each member and
- * the client callback for each client within each member if they are provided.
- *
- * @param fp File pointer
- * @param memcallback Callback function for members
- * @param clientcallback Callback function for clients
- * @param verbose Verbosity level
- * @return Status code
- */
 int epicsStdCall asDumpFP(
         FILE *fp,
         void (*memcallback)(struct asgMember *,FILE *),
@@ -1125,16 +1049,6 @@ next_rule:
     return(0);
 }
 
-/**
- * @brief Compute the access and trap mask for a client
- *
- * The access and trap mask are computed based on the rules for the client's ASG.
- * They are then stored in the client structure in the access and trapMask fields.
- * If the access has changed, the client callback is called.
- *
- * @param asClientPvt Pointer to the client structure
- * @return Status code
- */
 static long asComputePvt(ASCLIENTPVT asClientPvt)
 {
     asAccessRights      access=asNOACCESS;
@@ -1249,11 +1163,6 @@ next_rule:
     return(0);
 }
 
-/**
- * @brief Free all the memory allocated for the access security system
- *
- * @param pasbase Pointer to the base structure
- */
 void asFreeAll(ASBASE *pasbase)
 {
     UAG         *puag;
@@ -1475,16 +1384,6 @@ static long asHagAddHost(HAG *phag,const char *host)
     return 0;
 }
 
-/**
- * @brief Adds a new authority chain to the linked list of authority chains.
- * Inserts the new authority chain in alphabetical order based on its name.
- *
- * If a duplicate name is found, the function logs an error message and returns NULL.
- *
- * @param name The name of the authority chain to be added.
- * @param chain The authority chain string (a chain of common names - newline-delimited, ordered from Root to Issuer).
- * @return A pointer to the newly created AUTHCHAIN structure if successful, or NULL if an error occurs.
- */
 AUTHCHAIN *asAddAuthority(const char *name, const char *chain) {
     AUTHCHAIN         *pprev;
     AUTHCHAIN         *pnext;
@@ -1519,30 +1418,6 @@ AUTHCHAIN *asAddAuthority(const char *name, const char *chain) {
     return(pauth);
 }
 
-/**
- * @brief Retrieves the authority chain associated with a given name.
- *
- * This function searches for a specified authority name in an alphabetically
- * ordered list. If the name is found, the corresponding authority chain is
- * returned. If the name is not found, an error message is logged, and a
- * `NULL` value is returned.
- *
- * @param name The name of the authority to search for.
- *             Expected to be unique and match the order in the list.
- *
- * @return The corresponding authority chain for the specified name as a
- *         constant character pointer. If the authority name is not found,
- *         returns `NULL`.  newline-delimited, ordered from Root to Issuer
- *
- * @note The function assumes that the list of authorities in `authList` is
- *       in alphabetical order for efficient searching.
- *
- * @note Logs an error if the specified authority name is not found in the
- *       list.
- *
- * @warning If the global pointer `pasbasenew` is uninitialized or invalid,
- *          behavior is undefined.
- */
 const char *asGetAuthority(const char *name) {
     ASBASE      *pasbase = (ASBASE *)pasbasenew;
 
@@ -1613,14 +1488,6 @@ static long asAsgAddInp(ASG *pasg,const char *inp,int inpIndex)
     return(0);
 }
 
-/**
- * @brief Add a rule to an access security group
- *
- * @param pasg Pointer to the access security group
- * @param access Access rights
- * @param level Access level
- * @return Pointer to the rule or NULL if there is no memory to allocate the rule
- */
 static ASGRULE *asAsgAddRule(ASG *pasg,asAccessRights access,int level)
 {
     ASGRULE     *pasgrule;
@@ -1705,13 +1572,6 @@ static long asAsgRuleHagAdd(ASGRULE *pasgrule, const char *name)
     return 0;
 }
 
-/**
- * @brief Add a method to a rule
- *
- * @param pasgrule Pointer to the rule
- * @param name Name of the method
- * @return 0 if successful, S_asLib_dupMethod if the method is already in the rule
- */
 static long asAsgRuleMethodAdd(ASGRULE *pasgrule, const char *name)
 {
     ASGMETHOD *pasgmethod;
@@ -1738,13 +1598,6 @@ static long asAsgRuleMethodAdd(ASGRULE *pasgrule, const char *name)
     return 0;
 }
 
-/**
- * @brief Add an authority to a rule
- *
- * @param pasgrule Pointer to the rule
- * @param name Name of the authority
- * @return 0 if successful, S_asLib_dupAuthority if the authority is already in the rule
- */
 static long asAsgRuleAuthorityAdd(ASGRULE *pasgrule, const char *name)
 {
     ASGAUTHORITY *pasgauthority;
@@ -1807,11 +1660,6 @@ static long asAsgRuleCalc(ASGRULE *pasgrule,const char *calc)
     return(status);
 }
 
-/**
- * @brief Disable a rule if it contains unsupported elements
- * @param pasgrule the rule to disable
- * @return Non-zero if the rule was not disabled
- */
 static long asAsgRuleDisable(ASGRULE *pasgrule) {
     if (!pasgrule) return 1;
     pasgrule->ignore = 1;

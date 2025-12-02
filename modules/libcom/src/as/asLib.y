@@ -25,30 +25,20 @@ typedef struct {
     char *commonName;
 } CertPathNode_t;
 
-static int saveAuthorityEntry(char *name);
-
-static int pushCertPath(char *commonName);
-static void popCertPath();
-
+static void  freeCertPathStack();
 static char *getCurrentCertPath();
-
-static void initCertPathStack();
-static void freeCertPathStack();
-
-static int _pushCertPath(const char *commonName);
-static
-char* yystrdup(const char *inp) {
-    char* ret = strdup(inp);
-    if(!ret)
-        yyerror("MALLOC");
-    return ret;
-}
+static void  initCertPathStack();
+static void  popCertPath();
+static int   pushCertPath(char *commonName);
+static int  _pushCertPath(const char *commonName);
+static int   saveAuthorityEntry(char *name);
+static char* yystrdup(const char *inp);
 
 %}
 
 %start asconfig
 
-%token tokenUAG tokenHAG tokenASG tokenRULE tokenCALC tokenINP tokenMETHOD tokenAUTHORITY tokenPROTOCOL tokenSTRING
+%token tokenUAG tokenHAG tokenASG tokenRULE tokenCALC tokenMETHOD tokenAUTHORITY tokenPROTOCOL
 %token <Str> tokenSTRING
 %token <Int64> tokenINT64 tokenINP
 %token <Float64> tokenFLOAT64
@@ -465,6 +455,12 @@ static int yywarn(char *str, char *token)
         fprintf(stderr, ERL_WARNING " %s at line %d: %s\n", str, line_num, token);
     yyWarned = TRUE;
     return 0;
+}
+static char* yystrdup(const char *inp) {
+    char* ret = strdup(inp);
+    if(!ret)
+        yyerror("MALLOC");
+    return ret;
 }
 static int myParse(ASINPUTFUNCPTR inputfunction)
 {
