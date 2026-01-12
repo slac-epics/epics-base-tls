@@ -765,10 +765,9 @@ static int write_action ( caHdrLargeArray *mp,
         return RSRV_ERROR;
     }
 
-    asWritePvt = asTrapWriteWithData ( pciu->asClientPVT,
-        pciu->client->pUserName ? pciu->client->pUserName : "",
-        pciu->client->pHostName ? pciu->client->pHostName : "",
-        pciu->dbch, mp->m_dataType, mp->m_count, pPayload );
+    char * user = pciu->client->pUserName ? pciu->client->pUserName : "";
+    char * host = pciu->client->pHostName ? pciu->client->pHostName : "";
+    asWritePvt = asTrapWriteWithData ( pciu->asClientPVT, user, host, pciu->dbch, mp->m_dataType, mp->m_count, pPayload );
 
     dbStatus = dbChannel_put(
                   pciu->dbch,
