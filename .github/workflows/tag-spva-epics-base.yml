@@ -1,0 +1,144 @@
+name: Tag EPICS Base SPVA snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "YYYYMMDD (blank = today, UTC)"
+        required: false
+      target_ref:
+        description: "Git ref to tag (blank = workflow ref)"
+        required: false
+
+permissions:
+  contents: write  # needed to push tags
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.target_ref || github.ref }}
+
+      - name: Configure git identity (actor)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name  "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Compute tag
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          CFG="configure/CONFIG_BASE_VERSION"
+          [[ -f "$CFG" ]] || { echo "Missing $CFG"; exit 1; }
+
+          get_var() {
+            local var="$1"
+            awk -F'=' -v v="$var" '
+              $0 ~ "^[[:space:]]*"v"[[:space:]]*=" {
+                gsub(/[[:space:]]/, "", $2);
+                print $2;
+                exit
+              }' "$CFG"
+          }
+
+          V="$(get_var EPICS_VERSION)"
+          R="$(get_var EPICS_REVISION)"
+          M="$(get_var EPICS_MODIFICATION)"
+
+          [[ "$V" =~ ^[0-9]+$ && "$R" =~ ^[0-9]+$ && "$M" =~ ^[0-9]+$ ]] || {
+            echo "Failed to parse EPICS_VERSION/REVISION/MODIFICATION"; exit 1;
+          }
+
+          BASE_VER="${V}.${R}.${M}"
+
+          if [[ -n "${{ inputs.date }}" ]]; then
+            DATE="${{ inputs.date }}"
+            [[ "$DATE" =~ ^[0-9]{8}$ ]] || { echo "Bad date: $DATE"; exit 1; }
+          else
+            DATE="$(date -u +%Y%m%d)"
+          fi
+
+          TAG="epics-base-${BASE_VER}-spva-${DATE}"
+
+          SHA="$(git rev-parse HEAD)"
+          echo "base_ver=$BASE_VER" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE"         >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"           >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA"           >> "$GITHUB_OUTPUT"
+
+      - name: Show plan
+        shell: bash
+        run: |
+          echo "Commit : ${{ steps.vars.outputs.sha }}"
+          echo "Version: ${{ steps.vars.outputs.base_ver }}"
+          echo "Tag    : ${{ steps.vars.outputs.tag }}"
+
+      - name: Ensure tag does not exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag already exists: $TAG"
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "${TAG}$"; then
+            echo "Tag already exists on origin: $TAG"
+            exit 1
+          fi
+
+      - name: Create and push annotated tag (with commit subjects since last tag)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          VER="${{ steps.vars.outputs.base_ver }}"
+          DATE="${{ steps.vars.outputs.date }}"
+          SHA="$(git rev-parse --short=12 HEAD)"
+
+          # Prefer previous tags in the new scheme (reachable from HEAD)
+          PREV_TAG="$(git describe --tags --abbrev=0 --match 'epics-base-*-spva-*' 2>/dev/null || true)"
+
+          # Fallback to legacy tag if no new-scheme tag exists
+          if [[ -z "$PREV_TAG" ]]; then
+            LEGACY_TAG="spva-2025-01-12"
+            if git rev-parse -q --verify "refs/tags/$LEGACY_TAG" >/dev/null; then
+              PREV_TAG="$LEGACY_TAG"
+            else
+              PREV_TAG=""
+            fi
+          fi
+
+          if [[ -n "$PREV_TAG" ]]; then
+            BASELINE_LINE="Changes since ${PREV_TAG}:"
+            CHANGES="$(git log --no-merges --pretty=format:'- %s' "${PREV_TAG}..HEAD")"
+          else
+            BASELINE_LINE="Changes (no previous tag found):"
+            CHANGES="$(git log --no-merges --pretty=format:'- %s' HEAD)"
+          fi
+
+          if [[ -z "$CHANGES" ]]; then
+            CHANGES="- (no commits)"
+          fi
+
+          MSG="$(printf "SPVA snapshot for epics-base %s (%s) [%s]\n%s\n%s\n" \
+            "$VER" "$DATE" "$SHA" \
+            "$BASELINE_LINE" \
+            "$CHANGES")"
+
+          echo "Tag message:"
+          echo "----------------"
+          echo "$MSG"
+          echo "----------------"
+
+          git tag -a "$TAG" -m "$MSG"
+          git push origin "refs/tags/$TAG"
