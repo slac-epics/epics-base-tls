@@ -28,6 +28,10 @@
 #include "macLib.h"
 #include "postfix.h"
 #include "asLib.h"
+#include "epicsYaml.h"
+
+/* Implemented in asYaml.cpp */
+int epicsStdCall epicsAsYamlToLegacyACF(const char* filename, FILE* out);
 
 #undef ECHO /* from termios.h */
 
@@ -173,6 +177,23 @@ long epicsStdCall asInitFile(const char *filename,const char *substitutions)
 {
     FILE *fp;
     long status;
+
+    /* YAML support: if filename ends with .yaml/.yml then render to legacy ACF text and parse */
+    if (epicsYamlIsYamlFilename(filename)) {
+        FILE* tmp = epicsTempFile();
+        if (!tmp) {
+            fprintf(stderr, ERL_ERROR " asInitFile: unable to create temp file for YAML ACF\n");
+            return S_asLib_badConfig;
+        }
+        if (epicsAsYamlToLegacyACF(filename, tmp) != 0) {
+            fclose(tmp);
+            return S_asLib_badConfig;
+        }
+        rewind(tmp);
+        status = asInitFP(tmp, substitutions);
+        fclose(tmp);
+        return status;
+    }
 
     fp = fopen(filename,"r");
     if(!fp) {

@@ -1,0 +1,29 @@
+version: 1
+kind: epics.acf
+
+hags:
+  - name: foo
+    hosts:
+      - localhost
+
+asgs:
+  - name: DEFAULT
+    rules:
+      - level: 0
+        access: NONE
+
+  - name: ro
+    rules:
+      - level: 0
+        access: NONE
+      - level: 1
+        access: READ
+        hags:
+          - foo
+
+  - name: rw
+    rules:
+      - level: 1
+        access: WRITE
+        hags:
+          - foo

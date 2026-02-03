@@ -29,6 +29,12 @@
 #include "gpHash.h"
 #include "macLib.h"
 
+#include "epicsTempFile.h"
+#include "epicsYaml.h"
+
+/* Implemented in dbYaml.cpp */
+int epicsStdCall epicsDbYamlToLegacy(const char* filename, FILE* out);
+
 #include "dbBase.h"
 #include "dbFldTypes.h"
 #include "dbStaticLib.h"
@@ -353,7 +359,57 @@ cleanup:
 
 long dbReadDatabase(DBBASE **ppdbbase,const char *filename,
         const char *path,const char *substitutions)
-{return (dbReadCOM(ppdbbase,filename,0,path,substitutions));}
+{
+    if (filename && epicsYamlIsYamlFilename(filename)) {
+        FILE* yfp = NULL;
+        const char* ydir;
+        char* yfull = NULL;
+
+        if(*ppdbbase == 0) *ppdbbase = dbAllocBase();
+        if(path && strlen(path)>0) {
+            dbPath(*ppdbbase, path);
+        } else {
+            const char* penv = getenv("EPICS_DB_INCLUDE_PATH");
+            dbPath(*ppdbbase, penv ? penv : ".");
+        }
+
+        ydir = dbOpenFile(*ppdbbase, filename, &yfp);
+        if (!yfp) {
+            fprintf(stderr, ERL_ERROR ": dbReadDatabase: unable to open YAML file '%s'\n", filename);
+            return -1;
+        }
+        if (ydir) {
+            yfull = dbMalloc(strlen(ydir) + strlen(filename) + 2);
+            strcpy(yfull, ydir);
+            strcat(yfull, "/");
+            strcat(yfull, filename);
+        } else {
+            yfull = dbMalloc(strlen(filename) + 1);
+            strcpy(yfull, filename);
+        }
+        fclose(yfp);
+
+        FILE* tmp = epicsTempFile();
+        if (!tmp) {
+            fprintf(stderr, ERL_ERROR ": dbReadDatabase: unable to create temp file for YAML\n");
+            free(yfull);
+            return -1;
+        }
+        if (epicsDbYamlToLegacy(yfull, tmp) != 0) {
+            fclose(tmp);
+            free(yfull);
+            return -1;
+        }
+        free(yfull);
+        rewind(tmp);
+        {
+            long ret = dbReadCOM(ppdbbase, filename, tmp, path, substitutions);
+            fclose(tmp);
+            return ret;
+        }
+    }
+    return (dbReadCOM(ppdbbase,filename,0,path,substitutions));
+}
 
 long dbReadDatabaseFP(DBBASE **ppdbbase,FILE *fp,
         const char *path,const char *substitutions)

@@ -1,0 +1,7 @@
+version: 1
+kind: epics.db
+records:
+  - type: x
+    name: yamldb
+    fields:
+      VAL: "1"

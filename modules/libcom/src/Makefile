@@ -50,6 +50,7 @@ include $(LIBCOM)/taskwd/Makefile
 include $(LIBCOM)/timer/Makefile
 include $(LIBCOM)/yacc/Makefile
 include $(LIBCOM)/yajl/Makefile
+include $(LIBCOM)/yaml/Makefile
 
 # Generate library API header file
 API_HEADER = libComAPI.h
@@ -81,3 +82,4 @@ include $(LIBCOM)/flex/RULES
 include $(LIBCOM)/misc/RULES
 include $(LIBCOM)/osi/RULES
 include $(LIBCOM)/yajl/RULES
+include $(LIBCOM)/yaml/RULES

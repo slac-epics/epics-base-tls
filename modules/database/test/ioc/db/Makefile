@@ -69,6 +69,20 @@ testHarness_SRCS += dbLockTest.c
 TESTS += dbLockTest
 TESTFILES += ../dbLockTest.db
 
+TESTPROD_HOST += dbYamlLoadTest
+dbYamlLoadTest_SRCS += dbYamlLoadTest.c
+dbYamlLoadTest_SRCS += dbTestIoc_registerRecordDeviceDriver.cpp
+testHarness_SRCS += dbYamlLoadTest.c
+TESTS += dbYamlLoadTest
+TESTFILES += ../dbYamlLoadTest.db.yaml
+
+TESTPROD_HOST += dbSubstYamlLoadTest
+dbSubstYamlLoadTest_SRCS += dbSubstYamlLoadTest.c
+dbSubstYamlLoadTest_SRCS += dbTestIoc_registerRecordDeviceDriver.cpp
+testHarness_SRCS += dbSubstYamlLoadTest.c
+TESTS += dbSubstYamlLoadTest
+TESTFILES += ../dbSubstYamlLoadTest.substitutions.yaml ../dbSubstYamlLoadTest.template
+
 TESTPROD_HOST += dbStressTest
 dbStressTest_SRCS += dbStressLock.c
 dbStressTest_SRCS += dbTestIoc_registerRecordDeviceDriver.cpp

@@ -144,10 +144,35 @@ static void testUseIP(void)
     testAccess("rw", 0);
 }
 
+static void testYamlFile(void)
+{
+    long ret;
+
+    testDiag("testYamlFile()");
+
+    asCheckClientIP = 0;
+
+    ret = asInitFile("../aslibtest.acf.yaml", NULL);
+    testOk1(ret==0);
+
+    setUser("testing");
+    asAsl = 0;
+
+    setHost("localhost");
+    testAccess("DEFAULT", 0);
+    testAccess("ro", 1);
+    testAccess("rw", 3);
+
+    setHost("127.0.0.1");
+    testAccess("ro", 0);
+    testAccess("rw", 0);
+}
+
 MAIN(aslibtest)
 {
-    testPlan(27);
+    testPlan(33);
     testSyntaxErrors();
+    testYamlFile();
     testHostNames();
     testUseIP();
     errlogFlush();

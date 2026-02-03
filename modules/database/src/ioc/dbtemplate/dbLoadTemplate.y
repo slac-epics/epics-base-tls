@@ -26,6 +26,12 @@
 #include "dbLoadTemplate.h"
 #include "osiFileName.h"
 
+#include "epicsTempFile.h"
+#include "epicsYaml.h"
+
+/* Implemented in dbSubstYaml.cpp */
+int epicsStdCall epicsSubstYamlToLegacy(const char* displayName, FILE* in, FILE* out);
+
 static int line_num;
 static int yyerror(char* str);
 
@@ -342,6 +348,7 @@ static int is_not_inited = 1;
 int dbLoadTemplate(const char *sub_file, const char *cmd_collect, const char *path)
 {
     FILE *fp;
+    FILE *yaml_tmp = NULL;
     int i;
     int err;
 
@@ -371,6 +378,24 @@ int dbLoadTemplate(const char *sub_file, const char *cmd_collect, const char *pa
     if (!fp) {
         fprintf(stderr, "dbLoadTemplate: error opening sub file %s: %s\n", sub_file, strerror(errno));
         return -1;
+    }
+
+    if (epicsYamlIsYamlFilename(sub_file)) {
+        yaml_tmp = epicsTempFile();
+        if (!yaml_tmp) {
+            fclose(fp);
+            fprintf(stderr, "dbLoadTemplate: unable to create temp file for YAML substitutions\n");
+            return -1;
+        }
+        if (epicsSubstYamlToLegacy(sub_file, fp, yaml_tmp) != 0) {
+            fclose(fp);
+            fclose(yaml_tmp);
+            return -1;
+        }
+        fclose(fp);
+        fp = yaml_tmp;
+        yaml_tmp = NULL;
+        rewind(fp);
     }
 
     vars = malloc(dbTemplateMaxVars * sizeof(char*));

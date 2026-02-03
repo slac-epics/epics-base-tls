@@ -1,0 +1,9 @@
+version: 1
+kind: epics.substitutions
+templates:
+  - file: "../dbSubstYamlLoadTest.template"
+    substitutions:
+      - P: "DEV:"
+        R: "A"
+      - P: "DEV:"
+        R: "B"

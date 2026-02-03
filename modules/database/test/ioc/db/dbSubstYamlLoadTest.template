@@ -1,0 +1,3 @@
+record(x, "$(P)$(R)") {
+    field(DESC, "$(R)")
+}

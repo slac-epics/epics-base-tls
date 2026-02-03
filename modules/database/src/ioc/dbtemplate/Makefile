@@ -22,6 +22,6 @@ INC += dbtoolsIocRegister.h
 
 dbCore_SRCS += dbLoadTemplate.c
 dbCore_SRCS += dbtoolsIocRegister.c
+dbCore_SRCS += dbSubstYaml.cpp
 
 CLEANS += dbLoadTemplate_lex.c dbLoadTemplate.c
-

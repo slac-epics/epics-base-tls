@@ -18,6 +18,7 @@ INC += asTrapWrite.h
 
 Com_SRCS += asLib.c
 Com_SRCS += asTrapWrite.c
+Com_SRCS += asYaml.cpp
 
 # Allow early access to dbChannel.h
 asTrapWrite_CPPFLAGS = -I$(LIBCOM)/../../database/src/ioc/db
