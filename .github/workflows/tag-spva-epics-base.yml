@@ -104,6 +104,7 @@ jobs:
           VER="${{ steps.vars.outputs.base_ver }}"
           DATE="${{ steps.vars.outputs.date }}"
           SHA="$(git rev-parse --short=12 HEAD)"
+          LIMIT=30
 
           # Prefer previous tags in the new scheme (reachable from HEAD)
           PREV_TAG="$(git describe --tags --abbrev=0 --match 'epics-base-*-spva-*' 2>/dev/null || true)"
@@ -120,14 +121,21 @@ jobs:
 
           if [[ -n "$PREV_TAG" ]]; then
             BASELINE_LINE="Changes since ${PREV_TAG}:"
-            CHANGES="$(git log --no-merges --pretty=format:'- %s' "${PREV_TAG}..HEAD")"
+            TOTAL="$(git rev-list --no-merges --count "${PREV_TAG}..HEAD")"
+            CHANGES="$(git log --no-merges -n "$LIMIT" --pretty=format:'- %s' "${PREV_TAG}..HEAD")"
           else
             BASELINE_LINE="Changes (no previous tag found):"
-            CHANGES="$(git log --no-merges --pretty=format:'- %s' HEAD)"
+            TOTAL="$(git rev-list --no-merges --count HEAD)"
+            CHANGES="$(git log --no-merges -n "$LIMIT" --pretty=format:'- %s' HEAD)"
           fi
 
           if [[ -z "$CHANGES" ]]; then
             CHANGES="- (no commits)"
+            TOTAL=0
+          fi
+
+          if [[ "$TOTAL" -gt "$LIMIT" ]]; then
+            CHANGES="$(printf "%s\n- ... (%d more commits)\n" "$CHANGES" $((TOTAL-LIMIT)))"
           fi
 
           MSG="$(printf "SPVA snapshot for epics-base %s (%s) [%s]\n%s\n%s\n" \
