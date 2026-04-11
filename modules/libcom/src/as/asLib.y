@@ -17,6 +17,7 @@ static int yyWarned = FALSE;
 static int line_num=1;
 static UAG *yyUag=NULL;
 static HAG *yyHag=NULL;
+static SAG *yySag=NULL;
 static ASG *yyAsg=NULL;
 static ASGRULE *yyAsgRule=NULL;
 
@@ -42,7 +43,7 @@ static char* yystrdup(const char *inp);
 
 %start asconfig
 
-%token tokenUAG tokenHAG tokenASG tokenRULE tokenCALC tokenMETHOD tokenAUTHORITY tokenPROTOCOL
+%token tokenUAG tokenHAG tokenASG tokenRULE tokenCALC tokenMETHOD tokenAUTHORITY tokenPROTOCOL tokenSAG tokenIP tokenDNS
 %token <Str> tokenSTRING
 %token <Int64> tokenINT64 tokenINP
 %token <Float64> tokenFLOAT64
@@ -60,6 +61,7 @@ static char* yystrdup(const char *inp);
 %type <Str> rule_generic_block_elem
 %type <Str> rule_generic_block_elem_name
 %type <Str> keyword
+%type <Str> string_or_san_kw
 
 %%
 
@@ -73,6 +75,8 @@ asconfig_item:  tokenUAG uag_head uag_body
     |   tokenAUTHORITY top_auth { popCertPath(); }
     |   tokenASG asg_head asg_body
     |   tokenASG asg_head
+    |   tokenSAG sag_head sag_body
+    |   tokenSAG sag_head
     |   generic_item
     ;
 
@@ -89,6 +93,12 @@ keyword: tokenUAG
     { $$ = yystrdup("AUTHORITY"); }
     | tokenPROTOCOL
     { $$ = yystrdup("PROTOCOL"); }
+    | tokenSAG
+    { $$ = yystrdup("SAG"); }
+    | tokenIP
+    { $$ = yystrdup("IP"); }
+    | tokenDNS
+    { $$ = yystrdup("DNS"); }
     | non_rule_keyword
     ;
 
@@ -101,6 +111,13 @@ non_rule_keyword: tokenASG
         if(!!($$ = yystrdup("INPA")))
             $$[3] += $1; /* 'A' + input number */
     }
+    ;
+
+string_or_san_kw: tokenSTRING
+    | tokenIP
+    { $$ = yystrdup("IP"); }
+    | tokenDNS
+    { $$ = yystrdup("DNS"); }
     ;
 
 generic_item: tokenSTRING generic_head generic_list_block
@@ -185,7 +202,7 @@ rule_generic_block_elem_name:  non_rule_keyword
     |   tokenSTRING
     ;
 
-uag_head:   '(' tokenSTRING ')'
+uag_head:   '(' string_or_san_kw ')'
     {
         yyUag = asUagAdd($2);
         if(!yyUag) yyerror("");
@@ -203,7 +220,7 @@ uag_user_list:  uag_user_list ',' uag_user_list_name
     |   uag_user_list_name
     ;
 
-uag_user_list_name: tokenSTRING
+uag_user_list_name: string_or_san_kw
     {
         if (asUagAddUser(yyUag,$1))
             yyerror("");
@@ -211,7 +228,7 @@ uag_user_list_name: tokenSTRING
     }
     ;
 
-hag_head:   '(' tokenSTRING ')'
+hag_head:   '(' string_or_san_kw ')'
     {
         yyHag = asHagAdd($2);
         if(!yyHag) yyerror("");
@@ -226,7 +243,7 @@ hag_host_list:  hag_host_list ',' hag_host_list_name
     |   hag_host_list_name
     ;
 
-hag_host_list_name: tokenSTRING
+hag_host_list_name: string_or_san_kw
     {
         if (asHagAddHost(yyHag,$1))
             yyerror("");
@@ -234,16 +251,45 @@ hag_host_list_name: tokenSTRING
     }
     ;
 
+sag_head:   '(' string_or_san_kw ')'
+    {
+        yySag = asSagAdd($2);
+        if(!yySag) yyerror("");
+        free($2);
+    }
+    ;
+
+sag_body:   '{' sag_entry_list '}'
+    ;
+
+sag_entry_list: sag_entry_list ',' sag_entry
+    |   sag_entry
+    ;
+
+sag_entry:  tokenIP '(' tokenSTRING ')'
+    {
+        if (asSagMemberAdd(yySag,$3,asSanIP))
+            yyerror("");
+        free($3);
+    }
+    |   tokenDNS '(' tokenSTRING ')'
+    {
+        if (asSagMemberAdd(yySag,$3,asSanDNS))
+            yyerror("");
+        free($3);
+    }
+    ;
+
 top_auth: top_auth_head  auth_body
     | top_auth_head
     ;
 
-top_auth_head:   '(' tokenSTRING ',' tokenSTRING ')'
+top_auth_head:   '(' string_or_san_kw ',' string_or_san_kw ')'
     {
         pushCertPath($4);         // Add this new Certificate Path component to the Certificate Chain
         saveAuthorityEntry($2);   // Then create a new EPICS Security AUTHORITY with the given name
     }
-    | '(' tokenSTRING ')'
+    | '(' string_or_san_kw ')'
     {
         pushCertPath($2);         // Add this new Certificate Path component to the Certificate Chain
     }
@@ -270,19 +316,19 @@ auth_body_item: tokenAUTHORITY auth_head
     }
     ;
 
-auth_head: '(' tokenSTRING ',' tokenSTRING ')'
+auth_head: '(' string_or_san_kw ',' string_or_san_kw ')'
     {
         pushCertPath($4);
         $$ = $2;
     }
-    | '(' tokenSTRING ')'
+    | '(' string_or_san_kw ')'
     {
         pushCertPath($2);
         $$ = NULL;
     }
     ;
 
-asg_head:   '(' tokenSTRING ')'
+asg_head:   '(' string_or_san_kw ')'
     {
         yyAsg = asAsgAdd($2);
         if(!yyAsg) yyerror("");
@@ -359,6 +405,7 @@ rule_list:  rule_list rule_list_item
 
 rule_list_item: tokenUAG '(' rule_uag_list ')'
     |   tokenHAG  '(' rule_hag_list ')'
+    |   tokenSAG  '(' rule_sag_list ')'
     |   tokenMETHOD '(' rule_method_list ')'
     |   tokenAUTHORITY '(' rule_authority_list ')'
     |   tokenPROTOCOL '(' tokenSTRING ')'
@@ -395,7 +442,7 @@ rule_uag_list:  rule_uag_list ',' rule_uag_list_name
     |   rule_uag_list_name
     ;
 
-rule_uag_list_name: tokenSTRING
+rule_uag_list_name: string_or_san_kw
     {
         if (asAsgRuleUagAdd(yyAsgRule,$1))
             yyerror("");
@@ -407,9 +454,21 @@ rule_hag_list:  rule_hag_list ',' rule_hag_list_name
     |   rule_hag_list_name
     ;
 
-rule_hag_list_name: tokenSTRING
+rule_hag_list_name: string_or_san_kw
     {
         if (asAsgRuleHagAdd(yyAsgRule,$1))
+            yyerror("");
+        free($1);
+    }
+    ;
+
+rule_sag_list:  rule_sag_list ',' rule_sag_list_name
+    |   rule_sag_list_name
+    ;
+
+rule_sag_list_name: string_or_san_kw
+    {
+        if (asAsgRuleSagAdd(yyAsgRule,$1))
             yyerror("");
         free($1);
     }
@@ -419,7 +478,7 @@ rule_method_list: rule_method_list ',' rule_method_list_name
     |   rule_method_list_name
     ;
 
-rule_method_list_name: tokenSTRING
+rule_method_list_name: string_or_san_kw
     {
         if (asAsgRuleMethodAdd(yyAsgRule, $1))
             yyerror("");
@@ -431,7 +490,7 @@ rule_authority_list: rule_authority_list ',' rule_authority_list_name
     |   rule_authority_list_name
     ;
 
-rule_authority_list_name: tokenSTRING
+rule_authority_list_name: string_or_san_kw
     {
         if (asAsgRuleAuthorityAdd(yyAsgRule, $1))
             yyerror("");

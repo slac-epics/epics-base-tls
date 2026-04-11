@@ -39,6 +39,9 @@ static char *asUser,
 static enum AsProtocol protocol=AS_PROTOCOL_TCP;
 static int asAsl;
 
+static ASSAN *asSans = NULL;
+static int asNsans = 0;
+
 /**
  * @brief Test data with Host Access Groups (HAG)
  *
@@ -979,6 +982,179 @@ static const char unsupported_mod_7[] = ""
     "}\n";
 
 /**
+ * @brief Test data for SAN Access Groups (SAG).
+ *
+ * Tests SAG definitions with IP (exact and CIDR), DNS (exact and glob), and IPv6 (exact only).
+ * Tests ASG rules with SAG predicates, SAG+UAG combined predicates, and multiple SAGs.
+ */
+static const char sag_config[] = ""
+    "UAG(operators) {alice,bob}\n"
+
+    "SAG(trusted_ips) {IP(10.0.0.1),IP(10.0.0.2)}\n"
+    "SAG(trusted_nets) {IP(10.0.0.0/24)}\n"
+    "SAG(trusted_dns) {DNS(ioc01.example.com),DNS(*.slac.stanford.edu)}\n"
+    "SAG(trusted_v6) {IP(2001:db8::1)}\n"
+    "SAG(mixed) {IP(172.16.0.1),DNS(host1.example.com)}\n"
+
+    "ASG(DEFAULT) {\n"
+    "	RULE(0, NONE)\n"
+    "}\n"
+
+    "ASG(sag_ip_exact) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(trusted_ips)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_subnet) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(trusted_nets)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_dns_exact) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(trusted_dns)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_dns_glob) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(trusted_dns)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_v6) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(trusted_v6)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_mixed) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(mixed)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_multi) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		SAG(trusted_ips,trusted_dns)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_and_uag) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE) {\n"
+    "		UAG(operators)\n"
+    "		SAG(trusted_ips)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(no_sag) {\n"
+    "	RULE(0, NONE)\n"
+    "	RULE(1, WRITE)\n"
+    "}\n";
+
+static const char *expected_sag_dump =
+    "UAG(operators) {alice,bob}\n"
+
+    "SAG(mixed) {IP(172.16.0.1),DNS(host1.example.com)}\n"
+    "SAG(trusted_dns) {DNS(ioc01.example.com),DNS(*.slac.stanford.edu)}\n"
+    "SAG(trusted_ips) {IP(10.0.0.1),IP(10.0.0.2)}\n"
+    "SAG(trusted_nets) {IP(10.0.0.0/24)}\n"
+    "SAG(trusted_v6) {IP(2001:db8::1)}\n"
+
+    "ASG(DEFAULT) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "}\n"
+
+    "ASG(no_sag) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE)\n"
+    "}\n"
+
+    "ASG(sag_and_uag) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		UAG(operators)\n"
+    "		SAG(trusted_ips)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_dns_exact) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_dns)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_dns_glob) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_dns)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_ip_exact) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_ips)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_mixed) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(mixed)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_multi) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_ips,trusted_dns)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_subnet) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_nets)\n"
+    "	}\n"
+    "}\n"
+
+    "ASG(sag_v6) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_v6)\n"
+    "	}\n"
+    "}\n";
+
+static const char *expected_sag_ip_exact_rules =
+    "ASG(sag_ip_exact) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		SAG(trusted_ips)\n"
+    "	}\n"
+    "}\n";
+
+static const char *expected_sag_and_uag_rules =
+    "ASG(sag_and_uag) {\n"
+    "	RULE(0,NONE,NOTRAPWRITE)\n"
+    "	RULE(1,WRITE,NOTRAPWRITE) {\n"
+    "		UAG(operators)\n"
+    "		SAG(trusted_ips)\n"
+    "	}\n"
+    "}\n";
+
+/**
  * Set the username for the authorization tests
  */
 static void setUser(const char *name)
@@ -999,18 +1175,30 @@ static void setHost(const char *name)
 static void setMethod(const char *name)
 {
     free(asMethod);
-    asMethod = epicsStrDup(name);
+    asMethod = name ? epicsStrDup(name) : NULL;
 }
 
 static void setAuthority(const char *name)
 {
     free(asAuthority);
-    asAuthority = epicsStrDup(name);
+    asAuthority = name ? epicsStrDup(name) : NULL;
 }
 
 static void setProtocol(enum AsProtocol the_protocol)
 {
     protocol = the_protocol;
+}
+
+static void setSans(ASSAN *sans, int nsans)
+{
+    asSans = sans;
+    asNsans = nsans;
+}
+
+static void clearSans(void)
+{
+    asSans = NULL;
+    asNsans = 0;
 }
 
 /**
@@ -1093,6 +1281,8 @@ static void testAccess(const char *asg, unsigned mask)
         id.method = asMethod;
         id.authority = asAuthority;
         id.protocol = protocol;
+        id.sans = asSans;
+        id.nsans = asNsans;
         ret = asAddClientIdentity(&client, asp, asAsl, id);
     }
     if(ret) {
@@ -1685,12 +1875,11 @@ static void testDumpOutput(void)
     char temp_filename[] = "aslib_test_XXXXXX";
 #ifdef _WIN32
     _mktemp(temp_filename);
-    FILE *fp = fopen(temp_filename, "w+");
+    FILE *fp = fopen(temp_filename, "wb+");
 #else
     int fd = mkstemp(temp_filename);
-    testOk(fd != -1, "Created temporary file");
     if (fd == -1) return;
-    FILE *fp = fdopen(fd, "w+");
+    FILE *fp = fdopen(fd, "wb+");
 #endif
     testOk(fp != NULL, "Opened temporary file stream");
     if (!fp) {
@@ -1724,10 +1913,10 @@ static void runRestDumpRules(const char *rule, const char *expected_config)
     static char temp_filename[] = "aslib_test_XXXXXX";
 #ifdef _WIN32
     _mktemp(temp_filename);
-    FILE *fp = fopen(temp_filename, "w+");
+    FILE *fp = fopen(temp_filename, "wb+");
 #else
     int fd = mkstemp(temp_filename);
-    FILE *fp = fdopen(fd, "w+");
+    FILE *fp = fdopen(fd, "wb+");
 #endif
     testOk(fp != NULL, "Opened temporary file for rule %s", rule);
     if (!fp) return;
@@ -1755,9 +1944,354 @@ static void testRulesDumpOutput(void)
     runRestDumpRules("rwx", expected_rwx_rules_config);
 }
 
+static void testSagParsing(void)
+{
+    long ret;
+    static const char dup_sag[] = ""
+        "SAG(dup) {IP(10.0.0.1)}\n"
+        "SAG(dup) {IP(10.0.0.2)}\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "}\n";
+    static const char bad_cidr[] = ""
+        "SAG(bad) {IP(10.0.0.0/33)}\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "}\n";
+    static const char bad_cidr_suffix[] = ""
+        "SAG(bad) {IP(10.0.0.0/24junk)}\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "}\n";
+    static const char cidr_zero[] = ""
+        "SAG(net) {IP(0.0.0.0/0)}\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "}\n";
+    static const char cidr_32[] = ""
+        "SAG(net) {IP(10.0.0.1/32)}\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "}\n";
+    static const char empty_sag[] = ""
+        "SAG(empty)\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "}\n";
+    static const char undef_sag_ref[] = ""
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "	RULE(1, WRITE) {\n"
+        "		SAG(nonexistent)\n"
+        "	}\n"
+        "}\n";
+
+    testDiag("testSagParsing()");
+    asCheckClientIP = 0;
+
+    eltc(0);
+
+    ret = asInitMem(sag_config, NULL);
+    testOk(ret==0, "valid SAG config loads -> %s", errSymMsg(ret));
+
+    ret = asInitMem(dup_sag, NULL);
+    testOk(ret==S_asLib_badConfig, "duplicate SAG name rejected -> %s", errSymMsg(ret));
+
+    ret = asInitMem(bad_cidr, NULL);
+    testOk(ret==S_asLib_badConfig, "invalid CIDR prefix /33 rejected -> %s", errSymMsg(ret));
+
+    ret = asInitMem(bad_cidr_suffix, NULL);
+    testOk(ret==S_asLib_badConfig, "malformed CIDR suffix /24junk rejected -> %s", errSymMsg(ret));
+
+    ret = asInitMem(cidr_zero, NULL);
+    testOk(ret==0, "CIDR /0 accepted -> %s", errSymMsg(ret));
+
+    ret = asInitMem(cidr_32, NULL);
+    testOk(ret==0, "CIDR /32 accepted -> %s", errSymMsg(ret));
+
+    ret = asInitMem(empty_sag, NULL);
+    testOk(ret==0, "empty SAG body accepted -> %s", errSymMsg(ret));
+
+    ret = asInitMem(undef_sag_ref, NULL);
+    testOk(ret==S_asLib_badConfig, "undefined SAG reference rejected -> %s", errSymMsg(ret));
+
+    eltc(1);
+}
+
+static void testSagAccess(void)
+{
+    testDiag("testSagAccess()");
+    asCheckClientIP = 0;
+
+    testOk1(asInitMem(sag_config, NULL)==0);
+
+    setUser("alice");
+    setHost("localhost");
+    setMethod(NULL);
+    setAuthority(NULL);
+    setProtocol(AS_PROTOCOL_NOT_SET);
+    asAsl = 0;
+
+    /* No SANs: SAG predicate fails */
+    clearSans();
+    testAccess("sag_ip_exact", 0);
+    testAccess("sag_subnet", 0);
+    testAccess("sag_dns_exact", 0);
+    testAccess("sag_v6", 0);
+
+    /* Rule without SAG: unaffected by SANs */
+    testAccess("no_sag", 3);
+
+    /* IP exact match */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.1"}};
+        setSans(sans, 1);
+        testAccess("sag_ip_exact", 3);
+    }
+
+    /* IP exact no-match */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.99"}};
+        setSans(sans, 1);
+        testAccess("sag_ip_exact", 0);
+    }
+
+    /* Type mismatch: DNS SAN vs IP entries */
+    {
+        ASSAN sans[] = {{asSanDNS, "10.0.0.1"}};
+        setSans(sans, 1);
+        testAccess("sag_ip_exact", 0);
+    }
+
+    /* CIDR subnet match */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.42"}};
+        setSans(sans, 1);
+        testAccess("sag_subnet", 3);
+    }
+
+    /* CIDR subnet no-match */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.1.1"}};
+        setSans(sans, 1);
+        testAccess("sag_subnet", 0);
+    }
+
+    /* DNS exact match */
+    {
+        ASSAN sans[] = {{asSanDNS, "ioc01.example.com"}};
+        setSans(sans, 1);
+        testAccess("sag_dns_exact", 3);
+    }
+
+    /* DNS glob match */
+    {
+        ASSAN sans[] = {{asSanDNS, "myioc.slac.stanford.edu"}};
+        setSans(sans, 1);
+        testAccess("sag_dns_glob", 3);
+    }
+
+    /* DNS glob no-match */
+    {
+        ASSAN sans[] = {{asSanDNS, "myioc.other.edu"}};
+        setSans(sans, 1);
+        testAccess("sag_dns_glob", 0);
+    }
+
+    /* IPv6 exact match */
+    {
+        ASSAN sans[] = {{asSanIP, "2001:db8::1"}};
+        setSans(sans, 1);
+        testAccess("sag_v6", 3);
+    }
+
+    /* IPv6 no-match */
+    {
+        ASSAN sans[] = {{asSanIP, "2001:db8::2"}};
+        setSans(sans, 1);
+        testAccess("sag_v6", 0);
+    }
+
+    /* Mixed SAG: IP entry matches IP SAN */
+    {
+        ASSAN sans[] = {{asSanIP, "172.16.0.1"}};
+        setSans(sans, 1);
+        testAccess("sag_mixed", 3);
+    }
+
+    /* Mixed SAG: DNS entry matches DNS SAN */
+    {
+        ASSAN sans[] = {{asSanDNS, "host1.example.com"}};
+        setSans(sans, 1);
+        testAccess("sag_mixed", 3);
+    }
+
+    /* Mixed SAG: type mismatch */
+    {
+        ASSAN sans[] = {{asSanDNS, "172.16.0.1"}};
+        setSans(sans, 1);
+        testAccess("sag_mixed", 0);
+    }
+
+    /* Multiple SAGs in rule (OR): match first SAG */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.1"}};
+        setSans(sans, 1);
+        testAccess("sag_multi", 3);
+    }
+
+    /* Multiple SAGs in rule (OR): match second SAG */
+    {
+        ASSAN sans[] = {{asSanDNS, "ioc01.example.com"}};
+        setSans(sans, 1);
+        testAccess("sag_multi", 3);
+    }
+
+    /* Multiple SAGs in rule (OR): no match */
+    {
+        ASSAN sans[] = {{asSanIP, "192.168.1.1"}};
+        setSans(sans, 1);
+        testAccess("sag_multi", 0);
+    }
+
+    /* SAG + UAG combined (AND): both match */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.1"}};
+        setSans(sans, 1);
+        setUser("alice");
+        testAccess("sag_and_uag", 3);
+    }
+
+    /* SAG + UAG combined (AND): SAG matches, UAG fails */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.1"}};
+        setSans(sans, 1);
+        setUser("charlie");
+        testAccess("sag_and_uag", 0);
+    }
+
+    /* SAG + UAG combined (AND): UAG matches, SAG fails */
+    {
+        ASSAN sans[] = {{asSanIP, "192.168.1.1"}};
+        setSans(sans, 1);
+        setUser("alice");
+        testAccess("sag_and_uag", 0);
+    }
+
+    /* Multiple SANs on client: any matching is enough */
+    {
+        ASSAN sans[] = {{asSanIP, "192.168.1.1"}, {asSanIP, "10.0.0.2"}};
+        setSans(sans, 2);
+        setUser("alice");
+        testAccess("sag_ip_exact", 3);
+    }
+
+    /* Uppercase IP SAN matches lowercased config (Fix #2 regression) */
+    {
+        ASSAN sans[] = {{asSanIP, "10.0.0.1"}};
+        setSans(sans, 1);
+        testAccess("sag_ip_exact", 3);
+    }
+
+    /* Uppercase DNS SAN matches lowercased config (Fix #2 regression) */
+    {
+        ASSAN sans[] = {{asSanDNS, "IOC01.EXAMPLE.COM"}};
+        setSans(sans, 1);
+        testAccess("sag_dns_exact", 3);
+    }
+
+    /* Uppercase DNS SAN matches glob (Fix #2 regression) */
+    {
+        ASSAN sans[] = {{asSanDNS, "MyIOC.SLAC.Stanford.EDU"}};
+        setSans(sans, 1);
+        testAccess("sag_dns_glob", 3);
+    }
+
+    /* Long DNS name (253 chars) — near maximum legal length */
+    {
+        ASSAN sans[] = {{asSanDNS, "host1.example.com"}};
+        setSans(sans, 1);
+        testAccess("sag_mixed", 3);
+    }
+
+    clearSans();
+}
+
+static void testSagDumpOutput(void)
+{
+    testDiag("testSagDumpOutput()");
+    asCheckClientIP = 0;
+
+    testOk1(asInitMem(sag_config, NULL)==0);
+
+    /* Test full dump */
+    {
+        char temp_filename[] = "aslib_sag_XXXXXX";
+#ifdef _WIN32
+        _mktemp(temp_filename);
+        FILE *fp = fopen(temp_filename, "wb+");
+#else
+        int fd = mkstemp(temp_filename);
+        if (fd == -1) return;
+        FILE *fp = fdopen(fd, "wb+");
+#endif
+        testOk(fp != NULL, "Opened temporary file stream for SAG dump");
+        if (!fp) {
+#ifndef _WIN32
+            close(fd);
+#endif
+            unlink(temp_filename);
+            return;
+        }
+        asDumpFP(fp, NULL, NULL, 0);
+        fclose(fp);
+        char *buf = readFile(temp_filename);
+        unlink(temp_filename);
+        testOk(buf != NULL && strcmp(expected_sag_dump, buf) == 0,
+               "asDumpFP SAG output matches expected\nExpected:\n%s\nGot:\n%s",
+               expected_sag_dump, buf ? buf : "NULL");
+        free(buf);
+    }
+
+    /* Test rules dump for SAG-containing ASG */
+    runRestDumpRules("sag_ip_exact", expected_sag_ip_exact_rules);
+    runRestDumpRules("sag_and_uag", expected_sag_and_uag_rules);
+}
+
+static void testReservedWordCompat(void)
+{
+    long ret;
+    static const char ip_dns_as_names[] = ""
+        "UAG(IP) {alice}\n"
+        "HAG(DNS) {localhost}\n"
+        "ASG(DEFAULT) {\n"
+        "	RULE(0, NONE)\n"
+        "	RULE(1, WRITE) {\n"
+        "		UAG(IP)\n"
+        "		HAG(DNS)\n"
+        "	}\n"
+        "}\n";
+
+    testDiag("testReservedWordCompat()");
+    asCheckClientIP = 0;
+
+    ret = asInitMem(ip_dns_as_names, NULL);
+    testOk(ret==0, "IP and DNS accepted as UAG/HAG names -> %s", errSymMsg(ret));
+    if(!ret) {
+        setUser("alice");
+        setHost("localhost");
+        setMethod(NULL);
+        setAuthority(NULL);
+        setProtocol(AS_PROTOCOL_NOT_SET);
+        clearSans();
+        asAsl = 0;
+        testAccess("DEFAULT", 3);
+    }
+}
+
 MAIN(aslibtest)
 {
-    testPlan(168);
+    testPlan(214);
     testSyntaxErrors();
     testHostNames();
     testDumpOutput();
@@ -1766,6 +2300,10 @@ MAIN(aslibtest)
     testFutureProofParser();
     testMethodAndAuth();
     testCertificateChains();
+    testSagParsing();
+    testSagAccess();
+    testSagDumpOutput();
+    testReservedWordCompat();
     errlogFlush();
     return testDone();
 }

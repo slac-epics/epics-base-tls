@@ -73,6 +73,9 @@ static long asAsgRuleDisable(ASGRULE *pasgrule);
 static long asAsgRuleMethodAdd(ASGRULE *pasgrule, const char *name);
 static long asAsgRuleAuthorityAdd(ASGRULE *pasgrule, const char *name);
 static long asAsgAddProtocolAdd(ASGRULE *pasgrule,enum AsProtocol protocol);
+static SAG *asSagAdd(const char *sagName);
+static long asSagMemberAdd(SAG *psag,const char *san,enum asSanType type);
+static long asAsgRuleSagAdd(ASGRULE *pasgrule,const char *name);
 
 /**
  * @brief Initialize the Access Security
@@ -112,6 +115,7 @@ long epicsStdCall asInitialize(ASINPUTFUNCPTR inputfunction)
     ellInit(&pasbasenew->uagList);
     ellInit(&pasbasenew->hagList);
     ellInit(&pasbasenew->asgList);
+    ellInit(&pasbasenew->sagList);
     asAsgAdd(DEFAULT);
     status = myParse(inputfunction);
     if(status) {
@@ -152,6 +156,31 @@ long epicsStdCall asInitialize(ASINPUTFUNCPTR inputfunction)
             phagname = (HAGNAME *)ellNext(&phagname->node);
         }
         phag = (HAG *)ellNext(&phag->node);
+    }
+    {
+        SAG *psag;
+        SAGNAME *psagname;
+        psag = (SAG *)ellFirst(&pasbasenew->sagList);
+        while(psag) {
+            psagname = (SAGNAME *)ellFirst(&psag->list);
+            while(psagname) {
+                if(psagname->mode == asSagExact) {
+                    size_t keyLen = strlen(psagname->san) + 5; /* "dns:" + san + NUL */
+                    psagname->hashKey = asCalloc(1, keyLen);
+                    epicsSnprintf(psagname->hashKey, keyLen, "%s:%s",
+                        psagname->type == asSanIP ? "ip" : "dns", psagname->san);
+                    pgphentry = gphAdd(pasbasenew->phash, psagname->hashKey, psag);
+                    if(!pgphentry) {
+                        errlogPrintf("Duplicated SAN '%s' in SAG '%s'\n",
+                            psagname->san, psag->name);
+                        free(psagname->hashKey);
+                        psagname->hashKey = NULL;
+                    }
+                }
+                psagname = (SAGNAME *)ellNext(&psagname->node);
+            }
+            psag = (SAG *)ellNext(&psag->node);
+        }
     }
     pasbaseold = (ASBASE *)pasbase;
     pasbase = (ASBASE volatile *)pasbasenew;
@@ -612,6 +641,7 @@ int epicsStdCall asDumpFP(
     ASGCLIENT   *pasgclient;
     ASGMETHOD   *pasgmethod;
     ASGAUTHORITY *pasgauthority;
+    ASGSAG      *pasgsag;
 
     if(!asActive) return(0);
     puag = (UAG *)ellFirst(&pasbase->uagList);
@@ -638,6 +668,25 @@ int epicsStdCall asDumpFP(
             if(phagname) fprintf(fp,","); else fprintf(fp,"}\n");
         }
         phag = (HAG *)ellNext(&phag->node);
+    }
+    {
+        SAG *psag;
+        SAGNAME *psagname;
+        psag = (SAG *)ellFirst(&pasbase->sagList);
+        while(psag) {
+            fprintf(fp,"SAG(%s)",psag->name);
+            psagname = (SAGNAME *)ellFirst(&psag->list);
+            if(psagname) fprintf(fp," {"); else fprintf(fp,"\n");
+            while(psagname) {
+                if(psagname->type == asSanIP)
+                    fprintf(fp,"IP(%s)",psagname->san);
+                else
+                    fprintf(fp,"DNS(%s)",psagname->san);
+                psagname = (SAGNAME *)ellNext(&psagname->node);
+                if(psagname) fprintf(fp,","); else fprintf(fp,"}\n");
+            }
+            psag = (SAG *)ellNext(&psag->node);
+        }
     }
     pauthchain = (AUTHCHAIN *)ellFirst(&pasbase->authList);
     while(pauthchain) {
@@ -693,7 +742,8 @@ int epicsStdCall asDumpFP(
             pasghag = (ASGHAG *)ellFirst(&pasgrule->hagList);
             pasgmethod = (ASGMETHOD *)ellFirst(&pasgrule->methodList);
             pasgauthority = (ASGAUTHORITY *)ellFirst(&pasgrule->authList);
-            if(pasguag || pasghag|| pasgmethod|| pasgauthority || pasgrule->calc) {
+            pasgsag = (ASGSAG *)ellFirst(&pasgrule->sagList);
+            if(pasguag || pasghag|| pasgmethod|| pasgauthority || pasgsag || pasgrule->calc) {
                 fprintf(fp," {\n");
                 print_rule_end_brace = TRUE;
             } else {
@@ -723,6 +773,12 @@ int epicsStdCall asDumpFP(
                 fprintf(fp,"%s",pasgauthority->pauthority->name);
                 pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
                 if(pasgauthority) fprintf(fp,","); else fprintf(fp,")\n");
+            }
+            if(pasgsag) fprintf(fp,"\t\tSAG(");
+            while(pasgsag) {
+                fprintf(fp,"%s",pasgsag->psag->name);
+                pasgsag = (ASGSAG *)ellNext(&pasgsag->node);
+                if(pasgsag) fprintf(fp,","); else fprintf(fp,")\n");
             }
             if(pasgrule->calc) {
                 fprintf(fp,"\t\tCALC(\"%s\")",pasgrule->calc);
@@ -835,7 +891,40 @@ int epicsStdCall asDumpHagFP(FILE *fp,const char *hagname)
     }
     return(0);
 }
-
+
+int epicsStdCall asDumpSag(const char *sagname)
+{
+    return asDumpSagFP(stdout,sagname);
+}
+
+int epicsStdCall asDumpSagFP(FILE *fp,const char *sagname)
+{
+    SAG         *psag;
+    SAGNAME     *psagname;
+
+    if(!asActive) return(0);
+    psag = (SAG *)ellFirst(&pasbase->sagList);
+    while(psag) {
+        if(sagname && strcmp(sagname,psag->name)!=0) {
+            psag = (SAG *)ellNext(&psag->node);
+            continue;
+        }
+        fprintf(fp,"SAG(%s)",psag->name);
+        psagname = (SAGNAME *)ellFirst(&psag->list);
+        if(psagname) fprintf(fp," {"); else fprintf(fp,"\n");
+        while(psagname) {
+            if(psagname->type == asSanIP)
+                fprintf(fp,"IP(%s)",psagname->san);
+            else
+                fprintf(fp,"DNS(%s)",psagname->san);
+            psagname = (SAGNAME *)ellNext(&psagname->node);
+            if(psagname) fprintf(fp,","); else fprintf(fp,"}\n");
+        }
+        psag = (SAG *)ellNext(&psag->node);
+    }
+    return(0);
+}
+
 int epicsStdCall asDumpRules(const char *asgname)
 {
     return asDumpRulesFP(stdout,asgname);
@@ -850,6 +939,7 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
     ASGUAG      *pasguag;
     ASGMETHOD   *pasgmethod;
     ASGAUTHORITY *pasgauthority;
+    ASGSAG      *pasgsag;
 
     if(!asActive) return(0);
     pasg = (ASG *)ellFirst(&pasbase->asgList);
@@ -890,7 +980,8 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
             pasghag = (ASGHAG *)ellFirst(&pasgrule->hagList);
             pasgmethod = (ASGMETHOD *)ellFirst(&pasgrule->methodList);
             pasgauthority = (ASGAUTHORITY *)ellFirst(&pasgrule->authList);
-            if(pasguag || pasghag || pasgmethod || pasgauthority || pasgrule->calc) {
+            pasgsag = (ASGSAG *)ellFirst(&pasgrule->sagList);
+            if(pasguag || pasghag || pasgmethod || pasgauthority || pasgsag || pasgrule->calc) {
                 fprintf(fp," {\n");
                 print_rule_end_brace = TRUE;
             } else {
@@ -924,6 +1015,12 @@ int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname)
                     pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
                     if(pasgauthority) fprintf(fp,","); else fprintf(fp,")\n");
                 }
+            }
+            if(pasgsag) fprintf(fp,"\t\tSAG(");
+            while(pasgsag) {
+                fprintf(fp,"%s",pasgsag->psag->name);
+                pasgsag = (ASGSAG *)ellNext(&pasgsag->node);
+                if(pasgsag) fprintf(fp,","); else fprintf(fp,")\n");
             }
             if(pasgrule->calc) {
                 fprintf(fp,"\t\tCALC(\"%s\")",pasgrule->calc);
@@ -1226,11 +1323,79 @@ check_authority:
                 goto next_rule;
             }
             if(strncmp(rule_authority, pasgclient->identity.authority, strlen(rule_authority)) == 0) {
-                goto check_calc;
+                goto check_sag;
             }
             pasgauthority = (ASGAUTHORITY *)ellNext(&pasgauthority->node);
         }
         goto next_rule;
+    }
+check_sag:
+    if(ellCount(&pasgrule->sagList)>0) {
+        ASGSAG *pasgsag;
+        int sagOk = 0;
+
+        if(!pasgclient->identity.sans || pasgclient->identity.nsans <= 0)
+            goto next_rule;
+
+        pasgsag = (ASGSAG *)ellFirst(&pasgrule->sagList);
+        while(pasgsag && !sagOk) {
+            SAG *psag = pasgsag->psag;
+            if(psag) {
+                int si;
+                for(si = 0; si < pasgclient->identity.nsans && !sagOk; si++) {
+                    const ASSAN *san = &pasgclient->identity.sans[si];
+                    SAGNAME *psagname;
+                    size_t valLen = strlen(san->value);
+                    size_t prefLen = valLen + 5; /* "dns:" + value + NUL */
+                    char *prefixed = asCalloc(1, prefLen);
+                    char *lowVal = prefixed + (san->type == asSanIP ? 3 : 4);
+                    size_t vi;
+
+                    for(vi = 0; vi < valLen; vi++)
+                        lowVal[vi] = (char)tolower((int)san->value[vi]);
+                    lowVal[valLen] = '\0';
+                    memcpy(prefixed, san->type == asSanIP ? "ip:" : "dns:", san->type == asSanIP ? 3 : 4);
+
+                    if(gphFind(pasbase->phash, prefixed, psag)) {
+                        free(prefixed);
+                        sagOk = 1;
+                        break;
+                    }
+                    psagname = (SAGNAME *)ellFirst(&psag->list);
+                    while(psagname && !sagOk) {
+                        if(psagname->type == san->type && psagname->mode != asSagExact) {
+                            if(psagname->mode == asSagSubnet && san->type == asSanIP) {
+                                struct in_addr client_addr;
+                                if(inet_pton(AF_INET, lowVal, &client_addr) == 1) {
+                                    unsigned char *cb = (unsigned char *)&client_addr;
+                                    int bits = psagname->prefixLen;
+                                    int byteIdx;
+                                    int match = 1;
+                                    for(byteIdx = 0; byteIdx < 4 && match; byteIdx++) {
+                                        if(bits >= 8) {
+                                            match = (cb[byteIdx] == psagname->network[byteIdx]);
+                                            bits -= 8;
+                                        } else if(bits > 0) {
+                                            unsigned char mask = (unsigned char)(0xFF << (8 - bits));
+                                            match = ((cb[byteIdx] & mask) == (psagname->network[byteIdx] & mask));
+                                            bits = 0;
+                                        }
+                                    }
+                                    if(match) sagOk = 1;
+                                }
+                            } else if(psagname->mode == asSagGlob && san->type == asSanDNS) {
+                                if(epicsStrGlobMatch(lowVal, psagname->san))
+                                    sagOk = 1;
+                            }
+                        }
+                        psagname = (SAGNAME *)ellNext(&psagname->node);
+                    }
+                    free(prefixed);
+                }
+            }
+            pasgsag = (ASGSAG *)ellNext(&pasgsag->node);
+        }
+        if(!sagOk) goto next_rule;
     }
 check_calc:
         if(!pasgrule->calc
@@ -1297,6 +1462,23 @@ void asFreeAll(ASBASE *pasbase)
         free(phag);
         phag = pnext;
     }
+    {
+        SAG *psag = (SAG *)ellFirst(&pasbase->sagList);
+        while(psag) {
+            SAGNAME *psagname = (SAGNAME *)ellFirst(&psag->list);
+            while(psagname) {
+                pnext = ellNext(&psagname->node);
+                ellDelete(&psag->list,&psagname->node);
+                free(psagname->hashKey);
+                free(psagname);
+                psagname = pnext;
+            }
+            pnext = ellNext(&psag->node);
+            ellDelete(&pasbase->sagList,&psag->node);
+            free(psag);
+            psag = pnext;
+        }
+    }
     pasg = (ASG *)ellFirst(&pasbase->asgList);
     while(pasg) {
         free(pasg->pavalue);
@@ -1340,6 +1522,15 @@ void asFreeAll(ASBASE *pasbase)
                 free(pasgauthority->pauthority);
                 free(pasgauthority);
                 pasgauthority = pnext;
+            }
+            {
+                ASGSAG *pasgsag = (ASGSAG *)ellFirst(&pasgrule->sagList);
+                while(pasgsag) {
+                    pnext = ellNext(&pasgsag->node);
+                    ellDelete(&pasgrule->sagList,&pasgsag->node);
+                    free(pasgsag);
+                    pasgsag = pnext;
+                }
             }
             pnext = ellNext(&pasgrule->node);
             ellDelete(&pasg->ruleList,&pasgrule->node);
@@ -1470,6 +1661,133 @@ static long asHagAddHost(HAG *phag,const char *host)
     }
     ellAdd(&phag->list, &phagname->node);
     return 0;
+}
+
+static SAG *asSagAdd(const char *sagName)
+{
+    SAG         *pprev;
+    SAG         *pnext;
+    SAG         *psag;
+    int         cmpvalue;
+    ASBASE      *pasbase = (ASBASE *)pasbasenew;
+
+    pnext = (SAG *)ellFirst(&pasbase->sagList);
+    while(pnext) {
+        cmpvalue = strcmp(sagName,pnext->name);
+        if(cmpvalue < 0) break;
+        if(cmpvalue==0) {
+            errlogPrintf("Duplicate SAN Access Group named '%s'\n", sagName);
+            return(NULL);
+        }
+        pnext = (SAG *)ellNext(&pnext->node);
+    }
+    psag = asCalloc(1,sizeof(SAG)+strlen(sagName)+1);
+    ellInit(&psag->list);
+    psag->name = (char *)(psag+1);
+    strcpy(psag->name,sagName);
+    if(pnext==NULL) {
+        ellAdd(&pasbase->sagList,&psag->node);
+    } else {
+        pprev = (SAG *)ellPrevious(&pnext->node);
+        ellInsert(&pasbase->sagList,&pprev->node,&psag->node);
+    }
+    return(psag);
+}
+
+static long asSagMemberAdd(SAG *psag,const char *san,enum asSanType type)
+{
+    SAGNAME     *psagname;
+    size_t      len;
+    size_t      i;
+
+    if(!psag) return(0);
+    len = strlen(san);
+    psagname = asCalloc(1,sizeof(SAGNAME)+len);
+    psagname->type = type;
+
+    for(i = 0; i < len; i++) {
+        psagname->san[i] = (char)tolower((int)san[i]);
+    }
+    psagname->san[len] = '\0';
+
+    if(type == asSanIP && strchr(psagname->san,'/')) {
+        /* IPv4 CIDR notation */
+        char addrbuf[64];
+        char *slash;
+        int prefix;
+        struct in_addr addr;
+
+        strncpy(addrbuf, psagname->san, sizeof(addrbuf)-1);
+        addrbuf[sizeof(addrbuf)-1] = '\0';
+        slash = strchr(addrbuf, '/');
+        if(!slash) {
+            errlogPrintf("SAG: Invalid CIDR notation '%s'\n", san);
+            free(psagname);
+            return S_asLib_badConfig;
+        }
+        *slash = '\0';
+        {
+            char *endptr;
+            long prefixVal = strtol(slash+1, &endptr, 10);
+            if(*endptr != '\0' || endptr == slash+1) {
+                errlogPrintf("SAG: Invalid CIDR prefix '%s' in '%s'\n", slash+1, san);
+                free(psagname);
+                return S_asLib_badConfig;
+            }
+            prefix = (int)prefixVal;
+        }
+        if(prefix < 0 || prefix > 32) {
+            errlogPrintf("SAG: Invalid CIDR prefix length %d in '%s'\n", prefix, san);
+            free(psagname);
+            return S_asLib_badConfig;
+        }
+
+        if(strchr(addrbuf, ':')) {
+            errlogPrintf("SAG: IPv6 CIDR not supported in '%s'\n", san);
+            free(psagname);
+            return S_asLib_badConfig;
+        }
+
+        if(inet_pton(AF_INET, addrbuf, &addr) != 1) {
+            errlogPrintf("SAG: Invalid IPv4 address in '%s'\n", san);
+            free(psagname);
+            return S_asLib_badConfig;
+        }
+        memcpy(psagname->network, &addr, 4);
+        psagname->prefixLen = prefix;
+        psagname->mode = asSagSubnet;
+    } else if(type == asSanDNS && (strchr(psagname->san,'*') || strchr(psagname->san,'?'))) {
+        psagname->mode = asSagGlob;
+    } else {
+        psagname->mode = asSagExact;
+    }
+
+    ellAdd(&psag->list, &psagname->node);
+    return(0);
+}
+
+static long asAsgRuleSagAdd(ASGRULE *pasgrule,const char *name)
+{
+    ASGSAG      *pasgsag;
+    SAG         *psag;
+    ASBASE      *pasbase = (ASBASE *)pasbasenew;
+
+    if(!pasgrule) return(0);
+
+    psag = (SAG *)ellFirst(&pasbase->sagList);
+    while(psag) {
+        if(strcmp(psag->name,name)==0) break;
+        psag = (SAG *)ellNext(&psag->node);
+    }
+    if(!psag) {
+        errlogPrintf("No SAN Access Group named '%s' defined\n", name);
+        return S_asLib_noSag;
+    }
+
+    pasgsag = asCalloc(1,sizeof(ASGSAG));
+    pasgsag->psag = psag;
+    ellAdd(&pasgrule->sagList,&pasgsag->node);
+    return(0);
 }
 
 /**
@@ -1632,6 +1950,7 @@ static ASGRULE *asAsgAddRule(ASG *pasg,asAccessRights access,int level)
     ellInit(&pasgrule->hagList);
     ellInit(&pasgrule->authList);
     ellInit(&pasgrule->methodList);
+    ellInit(&pasgrule->sagList);
     ellAdd(&pasg->ruleList,&pasgrule->node);
     return(pasgrule);
 }

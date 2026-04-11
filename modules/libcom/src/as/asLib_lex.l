@@ -15,7 +15,7 @@ whitespace  [ \t\r]
 escape      {backslash}.
 stringchar  [^"\n\\]
 
-name        [a-zA-Z0-9_\-+:.\[\]<>;]
+name        [a-zA-Z0-9_\-+:.\[\]<>;*/]
 digit       [0-9]
 punctuation [(){},]
 link        [A-U]
@@ -46,6 +46,9 @@ CALC    { return(tokenCALC);    }
 METHOD  { return(tokenMETHOD);  }
 AUTHORITY { return(tokenAUTHORITY); }
 PROTOCOL { return(tokenPROTOCOL);   }
+SAG     { return(tokenSAG);     }
+IP      { return(tokenIP);      }
+DNS     { return(tokenDNS);     }
 
 INP{link} {
         yylval.Int64 = (unsigned char)yytext[3];

@@ -29,6 +29,10 @@ UAG(<name>) [{ <user> [, <user> ...] }]
 HAG(<name>) [{ <host> [, <host> ...] }]
 ...
 
+SAG(<name>) [{ <typed_entry> [, <typed_entry> ...] }]
+...
+    where <typed_entry> is IP(<address>) or DNS(<hostname>)
+
 ASG(<name>) [{
     [INP<index>(<pvname>)
      ...]
@@ -36,6 +40,7 @@ ASG(<name>) [{
     RULE(<level>, NONE | READ | WRITE [, NOTRAPWRITE | TRAPWRITE]) {
         [UAG(<name> [, <name> ...])]
         [HAG(<name> [, <name> ...])]
+        [SAG(<name> [, <name> ...])]
         [CALC(<calculation>)]
     }
     ...
@@ -64,6 +69,34 @@ Defines a group of user names.
 -   **HAG** -- *Host Access Group*.
 Defines a group of host names
 (or IP addresses) that clients can connect from.
+-   **SAG** -- *SAN Access Group*.
+Defines a group of typed Subject Alternative Name (SAN) entries
+from TLS client certificates.
+Each entry is qualified with a type:
+`IP(<address>)` for IP address SANs
+or `DNS(<hostname>)` for DNS name SANs.
+IP entries may use IPv4 CIDR subnet notation (e.g., `IP(10.0.0.0/24)`)
+to match a range of addresses.
+IPv6 addresses are supported as exact-match only;
+IPv6 CIDR notation is not supported.
+DNS entries may use glob wildcard patterns with `*` and `?`
+(e.g., `DNS(*.slac.stanford.edu)`)
+to match multiple hostnames.
+For example:
+
+```text
+SAG(trusted) {
+    IP(10.0.0.0/24),
+    IP(172.16.0.1),
+    IP(2001:db8::1),
+    DNS(*.slac.stanford.edu),
+    DNS(ioc01.example.com)
+}
+```
+
+Matching is type-aware: a client's IP SAN only matches IP entries,
+and a client's DNS SAN only matches DNS entries.
+A match on any entry in any listed SAG satisfies the SAG predicate.
 -   **ASG** -- *Access Security Group*.
 Defines a security group which records can be assigned to.
 An ASG entry may contain a block with input definitions and access rules.
@@ -97,6 +130,15 @@ is a member of one of the listed UAGs.
 -   **HAG(<name>, ...)** -- Host-group condition.
 The rule only applies if the client's host
 (as determined by its IP or hostname) is in one of the listed HAGs
+-   **SAG(<name>, ...)** -- SAN-group condition.
+The rule only applies if at least one of the client's typed SAN entries
+(from its TLS certificate) matches an entry in one of the listed SAGs.
+Matching uses a dual-path strategy:
+exact entries (IP and DNS) are matched via hash lookup;
+IPv4 CIDR subnet entries are matched by applying the prefix bitmask;
+DNS glob patterns are matched using wildcard comparison.
+The client SAN type (IP or DNS) must match the entry type.
+Clients without SANs (e.g., non-TLS connections) fail the SAG predicate.
 -   **CALC("<expression>")** -- Calculation condition.
 The rule only applies if the given expression evaluates to true (non-zero).
 
@@ -154,9 +196,12 @@ and the new standardized grammar provides a robust foundation for future extensi
 
 -   `UAG` → literal string `"UAG"`
 -   `HAG` → `"HAG"`
+-   `SAG` → `"SAG"`
 -   `ASG` → `"ASG"`
 -   `RULE` → `"RULE"`
 -   `CALC` → `"CALC"`
+-   `IP` → `"IP"`
+-   `DNS` → `"DNS"`
 -   `INP(link)` → literal `"INP"` followed immediately by one uppercase letter `A`-`U`
 
 ```text
@@ -181,7 +226,7 @@ and the new standardized grammar provides a robust foundation for future extensi
     -   **Unquoted**: One or more of
 
 ```text
-        NAMECHAR ::= letter | digit | "_" | "-" | "+" | ":" | "." | "[" | "]" | "<" | ">" | ";"
+        NAMECHAR ::= letter | digit | "_" | "-" | "+" | ":" | "." | "[" | "]" | "<" | ">" | ";" | "*" | "/"
         STRING(unquoted) ::= NAMECHAR+
 ```
 
@@ -214,6 +259,7 @@ asconfig ::= asconfig-item { asconfig-item } ;
 asconfig-item ::=
       uag-def
     | hag-def
+    | sag-def
     | asg-def
     | generic-top-level-item ;
 ```
@@ -240,6 +286,35 @@ hag-body ::= "{" hag-host-list "}" ;
 hag-host-list ::= STRING { "," STRING } ;
 ```
 
+##### SAG (SAN access group)
+
+```ebnf
+sag-def ::= "SAG" sag-head [ sag-body ] ;
+
+sag-head ::= "(" STRING ")" ;
+
+sag-body ::= "{" sag-entry-list "}" ;
+
+sag-entry-list ::= sag-entry { "," sag-entry } ;
+
+sag-entry ::=
+      "IP" "(" STRING ")"
+    | "DNS" "(" STRING ")" ;
+```
+
+IP entry values may be:
+-   An IPv4 address (e.g., `IP(10.0.0.1)`) — exact match.
+-   An IPv4 CIDR subnet (e.g., `IP(10.0.0.0/24)`) — matches any address in the subnet.
+    The prefix length must be 0–32.
+-   An IPv6 address (e.g., `IP(2001:db8::1)`) — exact match only.
+    IPv6 CIDR notation is not supported.
+
+DNS entry values may be:
+-   An exact hostname (e.g., `DNS(ioc01.example.com)`) — exact match.
+-   A glob wildcard pattern using `*` and `?` (e.g., `DNS(*.slac.stanford.edu)`) — wildcard match.
+
+All entry values are lowercased at parse time for case-insensitive matching.
+
 ##### ASG (access security group)
 
 ```ebnf
@@ -257,7 +332,7 @@ asg-body-item ::=
 ###### INP config
 
 ```ebnf
-inp-config ::= INP(link) "(" STRING ")" ;`
+inp-config ::= INP(link) "(" STRING ")" ;
 ```
 
 ###### RULE config
@@ -282,6 +357,10 @@ rule-list ::= rule-list-item { rule-list-item } ;
 rule-list-item ::=
       "UAG" "(" rule-uag-list ")"
     | "HAG" "(" rule-hag-list ")"
+    | "SAG" "(" rule-sag-list ")"
+    | "METHOD" "(" rule-method-list ")"
+    | "AUTHORITY" "(" rule-authority-list ")"
+    | "PROTOCOL" "(" STRING ")"
     | "CALC" "(" STRING ")"
     | rule-generic-block-elem ;
 ```
@@ -289,7 +368,13 @@ rule-list-item ::=
 ```ebnf
 rule-uag-list ::= STRING { "," STRING } ;
 
-rule-hag-list ::= STRING { "," STRING } ;`
+rule-hag-list ::= STRING { "," STRING } ;
+
+rule-sag-list ::= STRING { "," STRING } ;
+
+rule-method-list ::= STRING { "," STRING } ;
+
+rule-authority-list ::= STRING { "," STRING } ;
 ```
 
 ##### Generic / future-proof syntax
@@ -304,7 +389,10 @@ These are parser-level categories used inside generic constructs:
 keyword ::=
       "UAG"
     | "HAG"
+    | "SAG"
     | "CALC"
+    | "IP"
+    | "DNS"
     | non-rule-keyword ;
 
 non-rule-keyword ::=

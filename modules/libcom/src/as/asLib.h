@@ -23,6 +23,11 @@
  */
 #define EPICS_ASLIB_HAS_IDENTITY
 
+/** Identifies added API for SAN Access Group (SAG) support
+ * @since UNRELEASED
+ */
+#define EPICS_ASLIB_HAS_SAN
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -134,6 +139,8 @@ LIBCOM_API int epicsStdCall asDumpUag(const char *uagname);
 LIBCOM_API int epicsStdCall asDumpUagFP(FILE *fp,const char *uagname);
 LIBCOM_API int epicsStdCall asDumpHag(const char *hagname);
 LIBCOM_API int epicsStdCall asDumpHagFP(FILE *fp,const char *hagname);
+LIBCOM_API int epicsStdCall asDumpSag(const char *sagname);
+LIBCOM_API int epicsStdCall asDumpSagFP(FILE *fp,const char *sagname);
 LIBCOM_API int epicsStdCall asDumpRules(const char *asgname);
 LIBCOM_API int epicsStdCall asDumpRulesFP(FILE *fp,const char *asgname);
 LIBCOM_API int epicsStdCall asDumpMem(const char *asgname,
@@ -168,6 +175,7 @@ LIBCOM_API void epicsStdCall asTrapWriteAfterWrite(void *pvt);
 #define S_asLib_noMemory        (M_asLib|14) /*access security: no Memory */
 #define S_asLib_dupMethod       (M_asLib|15) /* Duplicate method name in rule */
 #define S_asLib_dupAuthority    (M_asLib|16) /* Duplicate authority name in rule */
+#define S_asLib_noSag           (M_asLib|17) /* SAN Access Group does not exist */
 
 /*Private declarations */
 LIBCOM_API extern int asActive;
@@ -183,6 +191,7 @@ typedef struct asBase{
     ELLLIST         hagList;
     ELLLIST         authList;
     ELLLIST         asgList;
+    ELLLIST         sagList;
     struct gphPvt   *phash;
 } ASBASE;
 
@@ -215,6 +224,31 @@ typedef struct authchain {
     char *          chain;      /* Authority Chain: Common Name or newline-separated Chain of Common Names (root to issuer) */
     ELLLIST         list;       /* List of named Authority definitions (pointer to this list) */
 } AUTHCHAIN;
+/*Defs for SAN Access Groups*/
+enum asSanType { asSanIP, asSanDNS };
+enum asSagMatchMode { asSagExact, asSagSubnet, asSagGlob };
+/** Client SAN descriptor passed into the access security system.
+ *  The caller retains ownership of @c value; it must remain valid
+ *  for the lifetime of the ASGIDENTITY that references it.
+ *  The access security layer never frees or copies these pointers. */
+typedef struct {
+    enum asSanType type;
+    const char     *value;
+} ASSAN;
+typedef struct {
+    ELLNODE         node;
+    enum asSanType  type;
+    enum asSagMatchMode mode;
+    unsigned char   network[4];  /* IPv4 binary address for asSagSubnet */
+    int             prefixLen;   /* CIDR prefix length for asSagSubnet */
+    char            *hashKey;    /* heap-allocated hash key for exact entries, NULL otherwise */
+    char            san[1];      /* flexible array — original string */
+} SAGNAME;
+typedef struct sag {
+    ELLNODE         node;
+    char            *name;
+    ELLLIST         list;   /*list of SAGNAME*/
+} SAG;
 /*Defs for Access SecurityGroups*/
 typedef struct {
     ELLNODE         node;
@@ -224,6 +258,10 @@ typedef struct {
     ELLNODE         node;
     HAG             *phag;
 }ASGHAG;
+typedef struct {
+    ELLNODE         node;
+    SAG             *psag;
+}ASGSAG;
 typedef struct {
     ELLNODE         node;
     struct method   *pmethod;
@@ -256,6 +294,7 @@ typedef struct{
     enum AsProtocol protocol; /* -1: ignore, AS_PROTOCOL_TCP: not TLS, AS_PROTOCOL_TLS: TLS */
     ELLLIST         methodList; /*List of ASGMETHOD*/
     ELLLIST         authList; /*List of ASGAUTHORITY*/
+    ELLLIST         sagList; /*List of ASGSAG*/
 } ASGRULE;
 typedef struct{
     ELLNODE         node;
@@ -283,12 +322,18 @@ typedef struct asgMember {
     void            *userPvt;
 } ASGMEMBER;
 
+/** Client identity passed to asAddClientIdentity().
+ *  All pointer fields are borrowed references; the caller must keep
+ *  the referenced strings alive for the lifetime of the client session.
+ *  The @c sans array and its @c value strings follow the same rule. */
 typedef struct asIdentity {
     const char *user;
     char *host;
     const char *method;
     const char *authority;
     enum AsProtocol protocol;
+    const ASSAN *sans;
+    int          nsans;
 } ASGIDENTITY;
 
 typedef struct asgClient {
