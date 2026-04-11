@@ -1365,8 +1365,9 @@ check_sag:
                     while(psagname && !sagOk) {
                         if(psagname->type == san->type && psagname->mode != asSagExact) {
                             if(psagname->mode == asSagSubnet && san->type == asSanIP) {
-                                struct in_addr client_addr;
-                                if(inet_pton(AF_INET, lowVal, &client_addr) == 1) {
+                                struct sockaddr_in sa;
+                                if(aToIPAddr(lowVal, 0, &sa) == 0) {
+                                    struct in_addr client_addr = sa.sin_addr;
                                     unsigned char *cb = (unsigned char *)&client_addr;
                                     int bits = psagname->prefixLen;
                                     int byteIdx;
@@ -1397,7 +1398,6 @@ check_sag:
         }
         if(!sagOk) goto next_rule;
     }
-check_calc:
         if(!pasgrule->calc
         || (!(pasg->inpBad & pasgrule->inpUsed) && (pasgrule->result==1))) {
             access = pasgrule->access;
@@ -1715,6 +1715,7 @@ static long asSagMemberAdd(SAG *psag,const char *san,enum asSanType type)
         char addrbuf[64];
         char *slash;
         int prefix;
+        struct sockaddr_in sa;
         struct in_addr addr;
 
         strncpy(addrbuf, psagname->san, sizeof(addrbuf)-1);
@@ -1748,11 +1749,12 @@ static long asSagMemberAdd(SAG *psag,const char *san,enum asSanType type)
             return S_asLib_badConfig;
         }
 
-        if(inet_pton(AF_INET, addrbuf, &addr) != 1) {
+        if(aToIPAddr(addrbuf, 0, &sa) != 0) {
             errlogPrintf("SAG: Invalid IPv4 address in '%s'\n", san);
             free(psagname);
             return S_asLib_badConfig;
         }
+        addr = sa.sin_addr;
         memcpy(psagname->network, &addr, 4);
         psagname->prefixLen = prefix;
         psagname->mode = asSagSubnet;
