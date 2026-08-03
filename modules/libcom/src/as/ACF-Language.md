@@ -61,6 +61,8 @@ within the above generic format:
 
 -   **UAG** -- *User Access Group*.
 Defines a group of user names.
+An entry may instead name fields of the connecting peer's certificate subject;
+see [Subject entries in a UAG](#subject-entries-in-a-uag) below.
 -   **HAG** -- *Host Access Group*.
 Defines a group of host names
 (or IP addresses) that clients can connect from.
@@ -135,6 +137,80 @@ without being rejected by those IOCs or requiring their parser to be modified.
 This change does not require any modifications to existing ACF files --
 all legacy syntax remains valid,
 and the new standardized grammar provides a robust foundation for future extensions.
+
+---
+
+## Subject entries in a UAG
+
+An entry in a UAG is normally a user name, matched exactly against the name the
+connection presents.  Over a TLS connection the peer also has a certificate
+whose subject carries more than a name: the organization it belongs to, the
+organizational units within that organization, and the country.  An entry may
+name those fields instead, so that a rule can be written about, say, everyone in
+one department rather than about each person by name.
+
+Such an entry is a single double-quoted string holding key and value pairs.  A
+comma separates pairs and an equals sign separates a key from its value; spaces
+around either are ignored.  Both kinds of entry may appear in one group:
+
+```text
+UAG(operators) {
+    alice,
+    "CN=dave,O=acme",
+    "OU=beamline,O=lbnl"
+}
+```
+
+The keys are `CN` for the common name, `O` for the organization, `OU` for an
+organizational unit and `C` for the country.  Case is ignored in a key, so `cn`
+and `CN` are the same key.  A value that has to contain a comma, an equals sign,
+a space or a quote is wrapped in single quotes: `O='Acme, Inc.'`.
+
+### What makes an entry match
+
+An entry places a condition on each field it names, and no condition on the
+fields it does not name.  All of its conditions must hold.
+
+- The common name, the organization and the country match by equality.  Each is
+  single-valued, so an entry may name each at most once.
+- Every organizational unit the entry names must appear among the peer's units
+  **in the same relative order**, though not necessarily next to one another.
+
+Order matters because a subject is written leaf first, so each unit contains the
+one before it.  `CN=alice, OU=staff, OU=beamline, O=lbnl, C=US` says alice is in
+staff, staff is within beamline, and beamline is within lbnl.  Writing
+`"OU=staff,OU=beamline"` therefore asks for staff within beamline, while
+`"OU=beamline,OU=staff"` asks for the opposite and does not match.
+
+Against that subject:
+
+| Entry | Matches | Why |
+|---|---|---|
+| `alice` or `"CN=alice"` | yes | The common name only; nothing is asked of the rest. |
+| `"OU=beamline"` | yes | Beamline is among her units.  This also matches a beamline person at another organization, so name the organization when that matters. |
+| `"OU=beamline,O=lbnl"` | yes | The unit is present and the organization matches. |
+| `"OU=staff,OU=beamline"` | yes | Both units are present, in containment order. |
+| `"OU=beamline,OU=staff"` | no | The order asks for beamline inside staff, which is not so. |
+| `"CN=bob,OU=beamline"` | no | The common name differs. |
+
+Naming a unit twice in one entry requires **both**, since the conditions
+combine.  To accept either, write two entries in the same group; entries within
+a group are alternatives.
+
+A plain name entry keeps the meaning it always had.  It matches the peer's
+common name, whether the connection presents a bare name as before or a full
+subject.
+
+### Entries that fail the load
+
+A malformed entry is an error, treated like any other error in the file: a
+message naming the line is written to standard error, the file is rejected and
+the configuration already in use is kept.  Ignoring the problem instead would
+quietly drop a condition and grant more access than was written.  An entry is
+rejected when it names a key other than `CN`, `O`, `OU` or `C`; when a key or a
+value is empty; when a pair has no equals sign; when a quoted value is never
+closed; when `CN`, `O` or `C` is given more than once; or when the same key and
+value are written twice.
 
 ---
 
@@ -227,7 +303,18 @@ uag-head ::= "(" STRING ")" ;
 
 uag-body ::= "{" uag-user-list "}" ;
 
-uag-user-list ::= STRING { "," STRING } ;
+uag-user-list ::= uag-user { "," uag-user } ;
+
+uag-user ::= STRING            (* a user name *)
+           | subject-string ;  (* quoted; see Subject entries in a UAG *)
+
+subject-string ::= '"' subject-pair { "," subject-pair } '"' ;
+
+subject-pair ::= subject-key "=" subject-value ;
+
+subject-key ::= "CN" | "O" | "OU" | "C" ;   (* case is ignored *)
+
+subject-value ::= CHARS | "'" CHARS "'" ;
 ```
 
 ```ebnf

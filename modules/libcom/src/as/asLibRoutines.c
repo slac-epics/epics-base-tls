@@ -57,7 +57,7 @@ static long asComputeAllAsgPvt(void);
 static long asComputeAsgPvt(ASG *pasg);
 static long asComputePvt(ASCLIENTPVT asClientPvt);
 static UAG *asUagAdd(const char *uagName);
-static long asUagAddUser(UAG *puag,const char *user);
+static long asUagAddUser(UAG *puag,const char *user,char *message,size_t messageLen);
 static HAG *asHagAdd(const char *hagName);
 static long asHagAddHost(HAG *phag,const char *host);
 static AUTHCHAIN *asAddAuthority(const char *name, const char *chain);
@@ -74,6 +74,179 @@ static long asAsgRuleMethodAdd(ASGRULE *pasgrule, const char *name);
 static long asAsgRuleAuthorityAdd(ASGRULE *pasgrule, const char *name);
 static long asAsgAddProtocolAdd(ASGRULE *pasgrule,enum AsProtocol protocol);
 
+/* Entries in a user access group that name certificate subject fields
+ *
+ * An entry may be a plain name, as it always could, or a list of key and value
+ * pairs naming parts of the peer's subject.  The same text also arrives from
+ * the transport as the identity string, so one parser serves both.  The
+ * difference is how much is forgiven: an entry comes from an administrator and
+ * anything unexpected in it fails the load, because quietly dropping a
+ * condition would grant more access than was written.  An identity string
+ * comes from a peer and may legitimately carry fields no entry can name, so
+ * those are ignored rather than rejected.
+ */
+
+typedef struct asSubject {
+    char  *text;            /*mutable copy that every field below points into*/
+    char  *commonName;      /*NULL when the text does not give one*/
+    char  *organization;
+    char  *country;
+    int    unitCount;
+    char **units;           /*organizational units, in the order written*/
+} asSubject;
+
+/* Whether the text holds a key and value pair rather than a plain name.  A
+ * quoted value may contain an equals sign without making the text keyed. */
+static int asSubjectIsKeyed(const char *text)
+{
+    int inQuote = 0;
+
+    if(!text) return 0;
+    for(; *text; text++) {
+        if(*text=='\'') inQuote = !inQuote;
+        else if(*text=='=' && !inQuote) return 1;
+    }
+    return 0;
+}
+
+static void asSubjectFree(asSubject *psubject)
+{
+    if(!psubject) return;
+    free(psubject->units);
+    free(psubject->text);
+    free(psubject);
+}
+
+#define asSubjectFail(fmt) \
+    do { \
+        if(message) epicsSnprintf(message,messageLen,fmt); \
+        asSubjectFree(psubject); \
+        return S_asLib_badUagSubject; \
+    } while(0)
+
+/* Parses key and value pairs.  Pairs are separated by a comma and key from
+ * value by an equals sign; spaces around either are dropped.  A value wrapped
+ * in single quotes carries a comma, an equals sign, a space or a quote as
+ * written.  Keys are CN, O, OU and C, compared without regard to case, and
+ * only OU may be given more than once.
+ *
+ * strict fails on anything unexpected; otherwise an unknown key and a repeat of
+ * a single-valued key are ignored, the first occurrence winning.
+ */
+static long asSubjectParse(const char *text, int strict, asSubject **ppsubject,
+    char *message, size_t messageLen)
+{
+    asSubject *psubject;
+    char *scan;
+    size_t maxUnits = 1;
+    const char *look;
+
+    for(look=text; *look; look++)
+        if(*look==',') maxUnits++;
+
+    psubject = asCalloc(1,sizeof(asSubject));
+    psubject->text = epicsStrDup(text);
+    psubject->units = asCalloc(maxUnits,sizeof(char *));
+
+    scan = psubject->text;
+    while(*scan) {
+        char *key, *value, *end;
+
+        while(*scan==' ' || *scan=='\t') scan++;
+        if(!*scan) break;
+
+        key = scan;
+        while(*scan && *scan!='=' && *scan!=',') scan++;
+        if(*scan!='=') asSubjectFail("expects key=value pairs");
+        end = scan;
+        *scan++ = '\0';
+        while(end>key && (end[-1]==' ' || end[-1]=='\t')) end--;
+        *end = '\0';
+
+        while(*scan==' ' || *scan=='\t') scan++;
+        if(*scan=='\'') {
+            value = ++scan;
+            while(*scan && *scan!='\'') scan++;
+            if(*scan!='\'') asSubjectFail("has an unterminated quoted value");
+            *scan++ = '\0';
+            while(*scan==' ' || *scan=='\t') scan++;
+            if(*scan && *scan!=',') asSubjectFail("has text after a quoted value");
+            if(*scan) scan++;
+        } else {
+            value = scan;
+            while(*scan && *scan!=',') scan++;
+            end = scan;
+            if(*scan) scan++;
+            while(end>value && (end[-1]==' ' || end[-1]=='\t')) end--;
+            *end = '\0';
+        }
+
+        if(!*key) asSubjectFail("has an empty key");
+        if(!*value) asSubjectFail("has an empty value");
+
+        if(epicsStrCaseCmp(key,"OU")==0) {
+            if(strict) {
+                int i;
+                for(i=0; i<psubject->unitCount; i++) {
+                    if(strcmp(psubject->units[i],value)==0)
+                        asSubjectFail("gives the same OU twice");
+                }
+            }
+            psubject->units[psubject->unitCount++] = value;
+        } else {
+            char **psingle;
+
+            if(epicsStrCaseCmp(key,"CN")==0)     psingle = &psubject->commonName;
+            else if(epicsStrCaseCmp(key,"O")==0) psingle = &psubject->organization;
+            else if(epicsStrCaseCmp(key,"C")==0) psingle = &psubject->country;
+            else if(strict)                      asSubjectFail("names a key that is not CN, O, OU or C");
+            else                                 continue;
+
+            if(*psingle) {
+                /* Only OU may repeat.  A peer may still present a subject built
+                 * elsewhere that repeats one, and there the first wins. */
+                if(strict) asSubjectFail("gives CN, O or C more than once");
+            } else {
+                *psingle = value;
+            }
+        }
+    }
+
+    *ppsubject = psubject;
+    return 0;
+}
+
+#undef asSubjectFail
+
+/* Whether every unit the entry names appears in the subject's units in the same
+ * relative order, though not necessarily next to one another.  A subject is
+ * written leaf first, so every unit in it is an ancestor of the common name and
+ * the order says which contains which. */
+static int asSubjectUnitsMatch(const asSubject *pentry, const asSubject *pidentity)
+{
+    int wanted = 0;
+    int have = 0;
+
+    while(wanted<pentry->unitCount && have<pidentity->unitCount) {
+        if(strcmp(pentry->units[wanted],pidentity->units[have])==0) wanted++;
+        have++;
+    }
+    return wanted==pentry->unitCount;
+}
+
+/* Whether the identity satisfies the entry.  A field the entry does not name
+ * places no condition. */
+static int asSubjectMatch(const asSubject *pentry, const asSubject *pidentity)
+{
+    if(pentry->commonName && (!pidentity->commonName
+        || strcmp(pentry->commonName,pidentity->commonName)!=0)) return 0;
+    if(pentry->organization && (!pidentity->organization
+        || strcmp(pentry->organization,pidentity->organization)!=0)) return 0;
+    if(pentry->country && (!pidentity->country
+        || strcmp(pentry->country,pidentity->country)!=0)) return 0;
+    return asSubjectUnitsMatch(pentry,pidentity);
+}
+
 /**
  * @brief Initialize the Access Security
  * This can be called while access security is already active.
@@ -131,10 +304,14 @@ long epicsStdCall asInitialize(ASINPUTFUNCPTR inputfunction)
     while(puag) {
         puagname = (UAGNAME *)ellFirst(&puag->list);
         while(puagname) {
-            pgphentry = gphAdd(pasbasenew->phash,puagname->user,puag);
-            if(!pgphentry) {
-                errlogPrintf("Duplicated user '%s' in UAG '%s'\n",
-                    puagname->user, puag->name);
+            /* An entry naming subject fields cannot be found by an exact
+             * lookup, so it is matched by a walk instead and is not hashed. */
+            if(!puagname->subject) {
+                pgphentry = gphAdd(pasbasenew->phash,puagname->user,puag);
+                if(!pgphentry) {
+                    errlogPrintf("Duplicated user '%s' in UAG '%s'\n",
+                        puagname->user, puag->name);
+                }
             }
             puagname = (UAGNAME *)ellNext(&puagname->node);
         }
@@ -621,7 +798,9 @@ int epicsStdCall asDumpFP(
         puagname = (UAGNAME *)ellFirst(&puag->list);
         if(puagname) fprintf(fp," {"); else fprintf(fp,"\n");
         while(puagname) {
-            fprintf(fp,"%s",puagname->user);
+            /* An entry naming subject fields has to be quoted to load back. */
+            if(puagname->subject) fprintf(fp,"\"%s\"",puagname->user);
+            else                  fprintf(fp,"%s",puagname->user);
             puagname = (UAGNAME *)ellNext(&puagname->node);
             if(puagname) fprintf(fp,","); else fprintf(fp,"}\n");
         }
@@ -797,7 +976,9 @@ int epicsStdCall asDumpUagFP(FILE *fp,const char *uagname)
         puagname = (UAGNAME *)ellFirst(&puag->list);
         if(puagname) fprintf(fp," {"); else fprintf(fp,"\n");
         while(puagname) {
-            fprintf(fp,"%s",puagname->user);
+            /* An entry naming subject fields has to be quoted to load back. */
+            if(puagname->subject) fprintf(fp,"\"%s\"",puagname->user);
+            else                  fprintf(fp,"%s",puagname->user);
             puagname = (UAGNAME *)ellNext(&puagname->node);
             if(puagname) fprintf(fp,","); else fprintf(fp,"}\n");
         }
@@ -1145,6 +1326,8 @@ static long asComputePvt(ASCLIENTPVT asClientPvt)
     ASGRULE             *pasgrule;
     asAccessRights      oldaccess;
     GPHENTRY            *pgphentry;
+    asSubject           *pidentity = NULL;
+    const char          *lookup;
 
     if(!asActive) return(S_asLib_asNotActive);
     if(!pasgclient) return(S_asLib_badClient);
@@ -1153,6 +1336,15 @@ static long asComputePvt(ASCLIENTPVT asClientPvt)
     pasg = pasgMember->pasg;
     if(!pasg) return(S_asLib_badAsg);
     oldaccess=pasgclient->access;
+    /* Read the identity string once, however many groups the rules name.  One
+     * that is a plain name is left alone and takes exactly the path it always
+     * did.  One that cannot be read is treated as a plain name, so an
+     * unreadable identity can only match less, never more. */
+    lookup = pasgclient->identity.user;
+    if(asSubjectIsKeyed(lookup)) {
+        if(asSubjectParse(lookup,FALSE,&pidentity,NULL,0)) pidentity = NULL;
+        else lookup = pidentity->commonName;
+    }
     pasgrule = (ASGRULE *)ellFirst(&pasg->ruleList);
     while(pasgrule) {
         if(pasgrule->ignore) goto next_rule;
@@ -1168,8 +1360,25 @@ static long asComputePvt(ASCLIENTPVT asClientPvt)
             pasguag = (ASGUAG *)ellFirst(&pasgrule->uagList);
             while(pasguag) {
                 if((puag = pasguag->puag)) {
-                    pgphentry = gphFind(pasbase->phash,pasgclient->identity.user,puag);
-                    if(pgphentry) goto check_hag;
+                    /* A plain name entry is still found by one lookup.  Against
+                     * a subject the lookup is on its common name, so naming the
+                     * person alone goes on costing nothing. */
+                    if(lookup) {
+                        pgphentry = gphFind(pasbase->phash,lookup,puag);
+                        if(pgphentry) goto check_hag;
+                    }
+                    /* Entries naming subject fields cannot be looked up, so they
+                     * are walked, and only for a group that holds some. */
+                    if(pidentity && puag->subjectCount>0) {
+                        UAGNAME *puagname = (UAGNAME *)ellFirst(&puag->list);
+
+                        while(puagname) {
+                            if(puagname->subject
+                            && asSubjectMatch(puagname->subject,pidentity))
+                                goto check_hag;
+                            puagname = (UAGNAME *)ellNext(&puagname->node);
+                        }
+                    }
                 }
                 pasguag = (ASGUAG *)ellNext(&pasguag->node);
             }
@@ -1241,6 +1450,7 @@ check_calc:
 next_rule:
         pasgrule = (ASGRULE *)ellNext(&pasgrule->node);
     }
+    asSubjectFree(pidentity);
     pasgclient->access = access;
     pasgclient->trapMask = trapMask;
     if(pasgclient->pcallback && oldaccess!=access) {
@@ -1275,6 +1485,7 @@ void asFreeAll(ASBASE *pasbase)
         while(puagname) {
             pnext = ellNext(&puagname->node);
             ellDelete(&puag->list,&puagname->node);
+            asSubjectFree(puagname->subject);
             free(puagname);
             puagname = pnext;
         }
@@ -1388,14 +1599,29 @@ static UAG *asUagAdd(const char *uagName)
     return(puag);
 }
 
-static long asUagAddUser(UAG *puag,const char *user)
+static long asUagAddUser(UAG *puag,const char *user,char *message,size_t messageLen)
 {
     UAGNAME     *puagname;
+    asSubject   *psubject = NULL;
 
     if(!puag) return(0);
+    /* An entry holding an unquoted equals sign names subject fields; anything
+     * else is a plain name and keeps exactly the meaning it always had. */
+    if(asSubjectIsKeyed(user)) {
+        char detail[120];
+        long status = asSubjectParse(user,TRUE,&psubject,detail,sizeof(detail));
+
+        if(status) {
+            if(message)
+                epicsSnprintf(message,messageLen,"UAG entry \"%s\" %s",user,detail);
+            return(status);
+        }
+    }
     puagname = asCalloc(1,sizeof(UAGNAME)+strlen(user)+1);
     puagname->user = (char *)(puagname+1);
     strcpy(puagname->user,user);
+    puagname->subject = psubject;
+    if(psubject) puag->subjectCount++;
     ellAdd(&puag->list,&puagname->node);
     return(0);
 }

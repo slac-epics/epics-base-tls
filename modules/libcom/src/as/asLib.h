@@ -23,6 +23,12 @@
  */
 #define EPICS_ASLIB_HAS_IDENTITY
 
+/** Identifies added support for entries in a user access group that name
+ * fields of the peer's certificate subject rather than only a name.
+ * @since UNRELEASED
+ */
+#define EPICS_ASLIB_HAS_SUBJECT_UAG
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -168,6 +174,7 @@ LIBCOM_API void epicsStdCall asTrapWriteAfterWrite(void *pvt);
 #define S_asLib_noMemory        (M_asLib|14) /*access security: no Memory */
 #define S_asLib_dupMethod       (M_asLib|15) /* Duplicate method name in rule */
 #define S_asLib_dupAuthority    (M_asLib|16) /* Duplicate authority name in rule */
+#define S_asLib_badUagSubject   (M_asLib|17) /* Malformed subject entry in User Access Group */
 
 /*Private declarations */
 LIBCOM_API extern int asActive;
@@ -189,14 +196,19 @@ typedef struct asBase{
 LIBCOM_API extern volatile ASBASE *pasbase;
 
 /*Defs for User Access Groups*/
+/* The parsed form of an entry that names certificate subject fields.  Private
+ * to asLibRoutines.c; an entry that is a plain name has none. */
+struct asSubject;
 typedef struct{
     ELLNODE         node;
-    char            *user;
+    char            *user;      /*the entry exactly as written*/
+    struct asSubject *subject;  /*NULL when the entry is a plain name*/
 } UAGNAME;
 typedef struct uag{
     ELLNODE         node;
     char            *name;
     ELLLIST         list;   /*list of UAGNAME*/
+    int             subjectCount; /*how many entries in list name subject fields*/
 } UAG;
 /*Defs for Host Access Groups*/
 typedef struct{

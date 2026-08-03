@@ -13,6 +13,7 @@
 #include <epicsUnitTest.h>
 
 #include <errSymTbl.h>
+#include <epicsStdio.h>
 #include <epicsString.h>
 #include <epicsThread.h>
 #include <osiFileName.h>
@@ -979,6 +980,31 @@ static const char unsupported_mod_7[] = ""
     "	}\n"
     "}\n";
 
+/* Groups whose entries name fields of the peer's certificate subject.  Kept in
+ * two pieces so the round-trip test can reload dumped groups with these rules. */
+#define SUBJECT_UAGS \
+    "UAG(plain) {alice,bob}\n" \
+    "UAG(both) {carol,\"CN=dave,O=acme\"}\n" \
+    "UAG(unit) {\"OU=beamline\"}\n" \
+    "UAG(path) {\"OU=staff,OU=beamline\"}\n" \
+    "UAG(reversed) {\"OU=beamline,OU=staff\"}\n" \
+    "UAG(unitorg) {\"OU=beamline,O=lbnl\"}\n" \
+    "UAG(lower) {\"cn=alice\"}\n" \
+    "UAG(country) {\"C=US\"}\n"
+
+#define SUBJECT_ASGS \
+    "ASG(DEFAULT) {RULE(0,NONE)}\n" \
+    "ASG(plain) {RULE(1,WRITE) {UAG(plain)}}\n" \
+    "ASG(both) {RULE(1,WRITE) {UAG(both)}}\n" \
+    "ASG(unit) {RULE(1,WRITE) {UAG(unit)}}\n" \
+    "ASG(path) {RULE(1,WRITE) {UAG(path)}}\n" \
+    "ASG(reversed) {RULE(1,WRITE) {UAG(reversed)}}\n" \
+    "ASG(unitorg) {RULE(1,WRITE) {UAG(unitorg)}}\n" \
+    "ASG(lower) {RULE(1,WRITE) {UAG(lower)}}\n" \
+    "ASG(country) {RULE(1,WRITE) {UAG(country)}}\n"
+
+static const char subject_config[] = SUBJECT_UAGS SUBJECT_ASGS;
+
 /**
  * Set the username for the authorization tests
  */
@@ -1767,9 +1793,149 @@ static void testRulesDumpOutput(void)
     runRestDumpRules("rwx", expected_rwx_rules_config);
 }
 
+/* Loads a configuration holding one user access group entry and reports
+ * whether it was accepted. */
+static long loadEntry(const char *entry)
+{
+    char config[300];
+
+    epicsSnprintf(config,sizeof(config),
+        "UAG(g) {\"%s\"}\nASG(DEFAULT) {RULE(0,NONE)}\n",entry);
+    return asInitMem(config,NULL);
+}
+
+static void testSubjectUag(void)
+{
+    long ret;
+    char *buf;
+    char *reloaded;
+    size_t reloadedLen;
+
+    testDiag("testSubjectUag()");
+    asCheckClientIP = 0;
+
+    /* Written forms that are accepted */
+    testOk(loadEntry("CN=alice")==0, "load \"CN=alice\"");
+    testOk(loadEntry("CN=alice,O=acme,C=US")==0, "load \"CN=alice,O=acme,C=US\"");
+    testOk(loadEntry("cn=alice")==0, "load \"cn=alice\", key case ignored");
+    testOk(loadEntry("CN = alice , O = acme")==0, "load with spaces around , and =");
+    testOk(loadEntry("O='a,b'")==0, "load quoted value holding a comma");
+    testOk(loadEntry("OU=a,OU=b")==0, "load repeated OU");
+
+    /* Written forms that fail the load */
+    eltc(0);
+    ret = loadEntry("X=1");
+    testOk(ret==S_asLib_badConfig, "reject unknown key -> %s", errSymMsg(ret));
+    ret = loadEntry("=alice");
+    testOk(ret==S_asLib_badConfig, "reject empty key -> %s", errSymMsg(ret));
+    ret = loadEntry("CN=");
+    testOk(ret==S_asLib_badConfig, "reject empty value -> %s", errSymMsg(ret));
+    ret = loadEntry("CN=alice,bob");
+    testOk(ret==S_asLib_badConfig, "reject pair with no = -> %s", errSymMsg(ret));
+    ret = loadEntry("CN='alice");
+    testOk(ret==S_asLib_badConfig, "reject unterminated quote -> %s", errSymMsg(ret));
+    ret = loadEntry("CN=a,CN=b");
+    testOk(ret==S_asLib_badConfig, "reject CN twice -> %s", errSymMsg(ret));
+    ret = loadEntry("OU=x,OU=x");
+    testOk(ret==S_asLib_badConfig, "reject the same OU twice -> %s", errSymMsg(ret));
+    eltc(1);
+
+    /* Matching */
+    testOk1(asInitMem(subject_config,NULL)==0);
+    setHost("localhost");
+    asAsl = 0;
+
+    testDiag("subject CN=alice,OU=staff,OU=beamline,O=lbnl,C=US");
+    setUser("CN=alice,OU=staff,OU=beamline,O=lbnl,C=US");
+    testAccess("plain", 3);      /* a plain name still matches, on the common name */
+    testAccess("lower", 3);      /* cn=alice, key case ignored */
+    testAccess("unit", 3);       /* names fewer fields than the subject carries */
+    testAccess("path", 3);       /* both units, in containment order */
+    testAccess("reversed", 0);   /* same units, order reversed */
+    testAccess("unitorg", 3);
+    testAccess("country", 3);
+    testAccess("both", 0);
+
+    testDiag("subject CN=dave,O=acme");
+    setUser("CN=dave,O=acme");
+    testAccess("both", 3);
+    testAccess("plain", 0);
+    testAccess("unit", 0);       /* names a field the subject does not carry */
+
+    testDiag("bare name carol");
+    setUser("carol");
+    testAccess("both", 3);       /* the plain entry in the same block */
+    testAccess("unit", 0);       /* a group of keyed entries only */
+
+    testDiag("subject with a unit beyond the one named");
+    setUser("CN=erin,OU=staff,OU=beamline,OU=campus,O=lbnl,C=US");
+    testAccess("unit", 3);       /* beamline is neither first nor last */
+    testAccess("unitorg", 3);
+
+    testDiag("subject carrying only one of the two units named");
+    setUser("CN=frank,OU=staff,O=lbnl,C=US");
+    testAccess("path", 0);
+
+    /* An unchanged file keeps its behaviour */
+    testDiag("existing configuration is unaffected");
+    testOk1(asInitMem(hostname_config,NULL)==0);
+    setUser("testing");
+    setHost("localhost");
+    testAccess("DEFAULT", 0);
+    testAccess("ro", 1);
+    testAccess("rw", 3);
+
+    /* Dumped groups load back and decide the same way */
+    testOk1(asInitMem(subject_config,NULL)==0);
+    {
+        char temp_filename[] = "aslib_subj_XXXXXX";
+#ifdef _WIN32
+        char *tmpres = _mktemp(temp_filename);
+        testOk(tmpres != NULL, "Created temporary file");
+        if (tmpres == NULL) return;
+        FILE *fp = fopen(temp_filename, "wb+");
+#else
+        int fd = mkstemp(temp_filename);
+        testOk(fd != -1, "Created temporary file");
+        if (fd == -1) return;
+        FILE *fp = fdopen(fd, "wb+");
+#endif
+        testOk(fp != NULL, "Opened temporary file stream");
+        if (!fp) {
+#ifndef _WIN32
+            close(fd);
+#endif
+            unlink(temp_filename);
+            return;
+        }
+
+        asDumpUagFP(fp, NULL);
+        fflush(fp);
+        rewind(fp);
+        buf = readFile(temp_filename);
+
+        reloadedLen = (buf ? strlen(buf) : 0) + sizeof(SUBJECT_ASGS) + 1;
+        reloaded = calloc(1, reloadedLen);
+        if (!reloaded) cantProceed("aslibtest: out of memory\n");
+        epicsSnprintf(reloaded, reloadedLen, "%s%s", buf ? buf : "", SUBJECT_ASGS);
+
+        ret = asInitMem(reloaded, NULL);
+        testOk(ret==0, "dumped groups load back -> %s\n%s", errSymMsg(ret), reloaded);
+
+        setUser("CN=alice,OU=staff,OU=beamline,O=lbnl,C=US");
+        setHost("localhost");
+        testAccess("unit", 3);
+
+        free(reloaded);
+        free(buf);
+        fclose(fp);
+        unlink(temp_filename);
+    }
+}
+
 MAIN(aslibtest)
 {
-    testPlan(168);
+    testPlan(207);
     testSyntaxErrors();
     testHostNames();
     testDumpOutput();
@@ -1778,6 +1944,7 @@ MAIN(aslibtest)
     testFutureProofParser();
     testMethodAndAuth();
     testCertificateChains();
+    testSubjectUag();
     errlogFlush();
     return testDone();
 }
