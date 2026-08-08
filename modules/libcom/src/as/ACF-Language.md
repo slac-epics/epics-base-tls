@@ -166,6 +166,21 @@ organizational unit and `C` for the country.  Case is ignored in a key, so `cn`
 and `CN` are the same key.  A value that has to contain a comma, an equals sign,
 a space or a quote is wrapped in single quotes: `O='Acme, Inc.'`.
 
+### Only a certificate can match one
+
+A subject entry is matched only against a peer that presented a certificate,
+that is, one whose connection is TLS and whose method is `x509`.  Both are
+filled in by the server from the transport and neither can be chosen by the
+peer.
+
+Every other identity is a name the client sent, and is matched whole and
+exactly, as it always was.  A client that could have its name read as subject
+fields could name any subject it liked and be granted whatever a group had said
+about that subject, so a name is never read that way however it is written.  A
+name containing an equals sign therefore matches nothing here, since an entry
+that would match it cannot be written: an equals sign is not a name character,
+and a quoted entry is a subject entry.
+
 ### What makes an entry match
 
 An entry places a condition on each field it names, and no condition on the

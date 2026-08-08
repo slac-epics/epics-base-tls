@@ -1876,6 +1876,33 @@ static void testSubjectUag(void)
     setUser("CN=frank,OU=staff,O=lbnl,C=US");
     testAccess("path", 0);
 
+    /* A name the client chose and sent is never read as subject fields.  Otherwise anyone
+     * able to pick their own name could name whatever subject a group had granted to and be
+     * granted it.  Which it is comes from the transport, not from the name: only an identity
+     * taken from a peer certificate is read this way. */
+    testDiag("a name the client sent is matched whole, however it is written");
+    setProtocol(AS_PROTOCOL_TCP);
+    setMethod("ca");
+    setUser("CN=alice,OU=staff,OU=beamline,O=lbnl,C=US");
+    testAccess("plain", 0);      /* would have matched alice on the common name */
+    testAccess("lower", 0);
+    testAccess("unit", 0);       /* would have matched OU=beamline */
+    testAccess("path", 0);
+    testAccess("unitorg", 0);
+    testAccess("country", 0);
+    setUser("CN=dave,O=acme");
+    testAccess("both", 0);       /* the entry naming exactly this subject */
+
+    /* Over a secure transport but without a certificate, the name is still the client's. */
+    setProtocol(AS_PROTOCOL_TLS);
+    setMethod("ca");
+    setUser("CN=dave,O=acme");
+    testAccess("both", 0);
+
+    /* And the same name from a certificate matches, which is the whole point. */
+    setMethod("x509");
+    testAccess("both", 3);
+
     /* An unchanged file keeps its behaviour */
     testDiag("existing configuration is unaffected");
     testOk1(asInitMem(hostname_config,NULL)==0);
@@ -1935,7 +1962,7 @@ static void testSubjectUag(void)
 
 MAIN(aslibtest)
 {
-    testPlan(207);
+    testPlan(216);
     testSyntaxErrors();
     testHostNames();
     testDumpOutput();

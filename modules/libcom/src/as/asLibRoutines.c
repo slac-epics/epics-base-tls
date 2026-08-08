@@ -77,8 +77,10 @@ static long asAsgAddProtocolAdd(ASGRULE *pasgrule,enum AsProtocol protocol);
 /* Entries in a user access group that name certificate subject fields
  *
  * An entry may be a plain name, as it always could, or a list of key and value
- * pairs naming parts of the peer's subject.  The same text also arrives from
- * the transport as the identity string, so one parser serves both.  The
+ * pairs naming parts of the peer's subject.  The same text also arrives as the
+ * identity string of a peer that presented a certificate, so one parser serves
+ * both.  It is read that way only for such a peer: see
+ * asIdentityFromCertificate.  The
  * difference is how much is forgiven: an entry comes from an administrator and
  * anything unexpected in it fails the load, because quietly dropping a
  * condition would grant more access than was written.  An identity string
@@ -97,6 +99,16 @@ typedef struct asSubject {
 
 /* Whether the text holds a key and value pair rather than a plain name.  A
  * quoted value may contain an equals sign without making the text keyed. */
+/* Whether an identity was taken from a peer's certificate, rather than being a name
+ * the client sent.  Both are filled in by the server from the transport.
+ */
+static int asIdentityFromCertificate(const ASIDENTITY *pidentity)
+{
+    if(!pidentity) return 0;
+    if(pidentity->protocol != AS_PROTOCOL_TLS) return 0;
+    return pidentity->method && strcmp(pidentity->method, "x509") == 0;
+}
+
 static int asSubjectIsKeyed(const char *text)
 {
     int inQuote = 0;
@@ -1339,9 +1351,18 @@ static long asComputePvt(ASCLIENTPVT asClientPvt)
     /* Read the identity string once, however many groups the rules name.  One
      * that is a plain name is left alone and takes exactly the path it always
      * did.  One that cannot be read is treated as a plain name, so an
-     * unreadable identity can only match less, never more. */
+     * unreadable identity can only match less, never more.
+     *
+     * Only an identity taken from a peer certificate is read as subject fields.
+     * Every other identity is a name the client chose and sent, and a client that
+     * could have it read as fields could name any subject it liked and be granted
+     * whatever a group had said about that subject.  Which it is, is decided from
+     * the connection: the method and protocol are filled in by the server from the
+     * transport, never by the client.  A name that happens to contain an equals
+     * sign is then matched whole, as it always was, and no group entry can be
+     * written to match it, an equals sign not being a name character. */
     lookup = pasgclient->identity.user;
-    if(asSubjectIsKeyed(lookup)) {
+    if(asIdentityFromCertificate(&pasgclient->identity) && asSubjectIsKeyed(lookup)) {
         if(asSubjectParse(lookup,FALSE,&pidentity,NULL,0)) pidentity = NULL;
         else lookup = pidentity->commonName;
     }
