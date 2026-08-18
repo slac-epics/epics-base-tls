@@ -205,8 +205,11 @@ uag_user_list:  uag_user_list ',' uag_user_list_name
 
 uag_user_list_name: tokenSTRING
     {
-        if (asUagAddUser(yyUag,$1))
-            yyerror("");
+        char message[200];
+
+        message[0] = '\0';
+        if (asUagAddUser(yyUag,$1,message,sizeof(message)))
+            yyerror(message);
         free($1);
     }
     ;
