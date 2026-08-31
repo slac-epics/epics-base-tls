@@ -24,7 +24,7 @@
 #define EPICS_ASLIB_HAS_IDENTITY
 
 /** Identifies added support for entries in a user access group that name
- * fields of the peer's certificate subject rather than only a name.
+ * fields of the peer's certificate subject.
  * @since UNRELEASED
  */
 #define EPICS_ASLIB_HAS_SUBJECT_UAG

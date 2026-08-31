@@ -1876,10 +1876,8 @@ static void testSubjectUag(void)
     setUser("CN=frank,OU=staff,O=lbnl,C=US");
     testAccess("path", 0);
 
-    /* A name the client chose and sent is never read as subject fields.  Otherwise anyone
-     * able to pick their own name could name whatever subject a group had granted to and be
-     * granted it.  Which it is comes from the transport, not from the name: only an identity
-     * taken from a peer certificate is read this way. */
+    /* Which it is comes from the transport: only an identity taken from a peer
+     * certificate is read as subject fields. */
     testDiag("a name the client sent is matched whole, however it is written");
     setProtocol(AS_PROTOCOL_TCP);
     setMethod("ca");

@@ -61,7 +61,7 @@ within the above generic format:
 
 -   **UAG** -- *User Access Group*.
 Defines a group of user names.
-An entry may instead name fields of the connecting peer's certificate subject;
+An entry may name fields of the connecting peer's certificate subject;
 see [Subject entries in a UAG](#subject-entries-in-a-uag) below.
 -   **HAG** -- *Host Access Group*.
 Defines a group of host names
@@ -146,8 +146,8 @@ An entry in a UAG is normally a user name, matched exactly against the name the
 connection presents.  Over a TLS connection the peer also has a certificate
 whose subject carries more than a name: the organization it belongs to, the
 organizational units within that organization, and the country.  An entry may
-name those fields instead, so that a rule can be written about, say, everyone in
-one department rather than about each person by name.
+name those fields, so that a rule can be written about, say, everyone in one
+department.
 
 Such an entry is a single double-quoted string holding key and value pairs.  A
 comma separates pairs and an equals sign separates a key from its value; spaces
@@ -174,17 +174,13 @@ filled in by the server from the transport and neither can be chosen by the
 peer.
 
 Every other identity is a name the client sent, and is matched whole and
-exactly, as it always was.  A client that could have its name read as subject
-fields could name any subject it liked and be granted whatever a group had said
-about that subject, so a name is never read that way however it is written.  A
-name containing an equals sign therefore matches nothing here, since an entry
-that would match it cannot be written: an equals sign is not a name character,
-and a quoted entry is a subject entry.
+exactly, as it always was.  A name is read as a name however it is written.  A
+name containing an equals sign matches nothing here: an equals sign is not a
+name character, and a quoted entry is a subject entry.
 
 ### What makes an entry match
 
-An entry places a condition on each field it names, and no condition on the
-fields it does not name.  All of its conditions must hold.
+An entry places a condition on each field it names.  All of its conditions must hold.
 
 - The common name, the organization and the country match by equality.  Each is
   single-valued, so an entry may name each at most once.
@@ -199,14 +195,14 @@ staff, staff is within beamline, and beamline is within lbnl.  Writing
 
 Against that subject:
 
-| Entry | Matches | Why |
-|---|---|---|
-| `alice` or `"CN=alice"` | yes | The common name only; nothing is asked of the rest. |
-| `"OU=beamline"` | yes | Beamline is among her units.  This also matches a beamline person at another organization, so name the organization when that matters. |
-| `"OU=beamline,O=lbnl"` | yes | The unit is present and the organization matches. |
-| `"OU=staff,OU=beamline"` | yes | Both units are present, in containment order. |
-| `"OU=beamline,OU=staff"` | no | The order asks for beamline inside staff, which is not so. |
-| `"CN=bob,OU=beamline"` | no | The common name differs. |
+| Entry                    | Matches | Why                                                                                                                                    |
+|--------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `alice` or `"CN=alice"`  | yes     | The common name only.                                                                                                                  |
+| `"OU=beamline"`          | yes     | Beamline is among her units.  This also matches a beamline person at another organization, so name the organization when that matters. |
+| `"OU=beamline,O=lbnl"`   | yes     | The unit is present and the organization matches.                                                                                      |
+| `"OU=staff,OU=beamline"` | yes     | Both units are present, in containment order.                                                                                          |
+| `"OU=beamline,OU=staff"` | no      | The order asks for beamline inside staff, which is not so.                                                                             |
+| `"CN=bob,OU=beamline"`   | no      | The common name differs.                                                                                                               |
 
 Naming a unit twice in one entry requires **both**, since the conditions
 combine.  To accept either, write two entries in the same group; entries within
@@ -220,9 +216,7 @@ subject.
 
 A malformed entry is an error, treated like any other error in the file: a
 message naming the line is written to standard error, the file is rejected and
-the configuration already in use is kept.  Ignoring the problem instead would
-quietly drop a condition and grant more access than was written.  An entry is
-rejected when it names a key other than `CN`, `O`, `OU` or `C`; when a key or a
+the configuration already in use is kept.  An entry is rejected when it names a key other than `CN`, `O`, `OU` or `C`; when a key or a
 value is empty; when a pair has no equals sign; when a quoted value is never
 closed; when `CN`, `O` or `C` is given more than once; or when the same key and
 value are written twice.

@@ -84,8 +84,8 @@ static long asAsgAddProtocolAdd(ASGRULE *pasgrule,enum AsProtocol protocol);
  * difference is how much is forgiven: an entry comes from an administrator and
  * anything unexpected in it fails the load, because quietly dropping a
  * condition would grant more access than was written.  An identity string
- * comes from a peer and may legitimately carry fields no entry can name, so
- * those are ignored rather than rejected.
+ * comes from a peer and may legitimately carry fields no entry can name, which
+ * are ignored.
  */
 
 typedef struct asSubject {
@@ -97,10 +97,8 @@ typedef struct asSubject {
     char **units;           /*organizational units, in the order written*/
 } asSubject;
 
-/* Whether the text holds a key and value pair rather than a plain name.  A
- * quoted value may contain an equals sign without making the text keyed. */
-/* Whether an identity was taken from a peer's certificate, rather than being a name
- * the client sent.  Both are filled in by the server from the transport.
+/* Whether an identity was taken from a peer's certificate.  Both are filled in
+ * by the server from the transport.
  */
 static int asIdentityFromCertificate(const ASIDENTITY *pidentity)
 {
@@ -142,8 +140,8 @@ static void asSubjectFree(asSubject *psubject)
  * written.  Keys are CN, O, OU and C, compared without regard to case, and
  * only OU may be given more than once.
  *
- * strict fails on anything unexpected; otherwise an unknown key and a repeat of
- * a single-valued key are ignored, the first occurrence winning.
+ * strict fails on anything unexpected.  Otherwise an unknown key and a repeat
+ * of a single-valued key are ignored, the first occurrence winning.
  */
 static long asSubjectParse(const char *text, int strict, asSubject **ppsubject,
     char *message, size_t messageLen)
@@ -246,8 +244,7 @@ static int asSubjectUnitsMatch(const asSubject *pentry, const asSubject *pidenti
     return wanted==pentry->unitCount;
 }
 
-/* Whether the identity satisfies the entry.  A field the entry does not name
- * places no condition. */
+/* Whether the identity satisfies the entry. */
 static int asSubjectMatch(const asSubject *pentry, const asSubject *pidentity)
 {
     if(pentry->commonName && (!pidentity->commonName
@@ -316,8 +313,7 @@ long epicsStdCall asInitialize(ASINPUTFUNCPTR inputfunction)
     while(puag) {
         puagname = (UAGNAME *)ellFirst(&puag->list);
         while(puagname) {
-            /* An entry naming subject fields cannot be found by an exact
-             * lookup, so it is matched by a walk instead and is not hashed. */
+            /* An entry naming subject fields is matched by a walk. */
             if(!puagname->subject) {
                 pgphentry = gphAdd(pasbasenew->phash,puagname->user,puag);
                 if(!pgphentry) {
@@ -1351,16 +1347,12 @@ static long asComputePvt(ASCLIENTPVT asClientPvt)
     /* Read the identity string once, however many groups the rules name.  One
      * that is a plain name is left alone and takes exactly the path it always
      * did.  One that cannot be read is treated as a plain name, so an
-     * unreadable identity can only match less, never more.
+     * unreadable identity can only match less.
      *
      * Only an identity taken from a peer certificate is read as subject fields.
-     * Every other identity is a name the client chose and sent, and a client that
-     * could have it read as fields could name any subject it liked and be granted
-     * whatever a group had said about that subject.  Which it is, is decided from
-     * the connection: the method and protocol are filled in by the server from the
-     * transport, never by the client.  A name that happens to contain an equals
-     * sign is then matched whole, as it always was, and no group entry can be
-     * written to match it, an equals sign not being a name character. */
+     * Which it is comes from the connection: the method and protocol are filled
+     * in by the server from the transport.  A name that contains an equals sign
+     * is matched whole, an equals sign not being a name character. */
     lookup = pasgclient->identity.user;
     if(asIdentityFromCertificate(&pasgclient->identity) && asSubjectIsKeyed(lookup)) {
         if(asSubjectParse(lookup,FALSE,&pidentity,NULL,0)) pidentity = NULL;
@@ -1383,7 +1375,7 @@ static long asComputePvt(ASCLIENTPVT asClientPvt)
                 if((puag = pasguag->puag)) {
                     /* A plain name entry is still found by one lookup.  Against
                      * a subject the lookup is on its common name, so naming the
-                     * person alone goes on costing nothing. */
+                     * person alone keeps its cost. */
                     if(lookup) {
                         pgphentry = gphFind(pasbase->phash,lookup,puag);
                         if(pgphentry) goto check_hag;
